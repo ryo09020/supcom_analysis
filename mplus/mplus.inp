@@ -2,7 +2,7 @@ TITLE:
   My LPA - clean version;
 
 DATA:
-  FILE IS "dummy_for_mplus.csv";
+  FILE IS "physiological_test_1st_n12151.csv";
 
 VARIABLE:
   NAMES ARE
@@ -16,7 +16,7 @@ ANALYSIS:
   TYPE = MIXTURE;
 
 SAVEDATA:
-  FILE IS "profiles_c2.dat";
+  FILE IS "tipi_profiles_c2.dat";
   SAVE = CPROBABILITIES;
 
 OUTPUT:

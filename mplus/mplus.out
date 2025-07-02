@@ -1,6 +1,6 @@
 Mplus VERSION 8.11 DEMO (Mac)
 MUTHEN & MUTHEN
-07/02/2025   5:41 PM
+07/02/2025   6:01 PM
 
 INPUT INSTRUCTIONS
 
@@ -22,7 +22,7 @@ INPUT INSTRUCTIONS
     TYPE = MIXTURE;
 
   SAVEDATA:
-    FILE IS "profiles_c2.dat";
+    FILE IS "tipi_profiles_c2.dat";
     SAVE = CPROBABILITIES;
 
   OUTPUT:
@@ -333,7 +333,7 @@ SAVEDATA INFORMATION
 
 
   Save file
-    profiles_c2.dat
+    tipi_profiles_c2.dat
 
   Order and format of variables
 
@@ -354,8 +354,8 @@ SAVEDATA INFORMATION
   Save missing symbol        *
 
 
-     Beginning Time:  17:41:25
-        Ending Time:  17:41:26
+     Beginning Time:  18:01:50
+        Ending Time:  18:01:51
        Elapsed Time:  00:00:01
 
 
