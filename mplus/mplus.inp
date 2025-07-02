@@ -7,9 +7,9 @@ DATA:
 VARIABLE:
   NAMES ARE
     ID gender birthdate age_entry age_scan scan_date course_code
-    item1 item2 item3 item4 item5;
+    tipi_n tipi_e tipi_o tipi_a tipi_c;
   USEVARIABLES ARE
-    item1 item2 item3 item4 item5;
+    tipi_n tipi_e tipi_o tipi_a tipi_c;
   CLASSES = c(2);
 
 ANALYSIS:
