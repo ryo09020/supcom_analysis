@@ -1,0 +1,26 @@
+TITLE:
+  My LPA - clean version;
+
+DATA:
+  FILE IS "dummy_for_mplus.csv";
+
+VARIABLE:
+  NAMES ARE
+    ID gender birthdate age_entry age_scan scan_date course_code
+    item1 item2 item3 item4 item5;
+  USEVARIABLES ARE
+    item1 item2 item3 item4 item5;
+  CLASSES = c(2);
+
+ANALYSIS:
+  TYPE = MIXTURE;
+
+SAVEDATA:
+  FILE IS "profiles_c2.dat";
+  SAVE = CPROBABILITIES;
+
+OUTPUT:
+  TECH11 TECH14;
+
+PLOT:
+  TYPE = PLOT3;
