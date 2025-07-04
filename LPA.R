@@ -1,5 +1,6 @@
 #################################################################
-# 潜在プロファイル分析(LPA)と適合度指標の計算・出力 Rスクリプト (最終確定版 v5)
+# 潜在プロファイル分析(LPA)と適合度指標の計算・出力 Rスクリプト (最終確定版 v8)
+# (B-LRT計算を含むフルバージョン)
 #################################################################
 
 # 1. 準備：必要なパッケージの読み込み
@@ -7,6 +8,7 @@
 cat("Step 1: パッケージを読み込んでいます...\n")
 library(tidyverse)
 library(tidyLPA)
+library(mclust) # ★★★★★ B-LRTの計算に必要なので追加 ★★★★★
 
 
 # 2. データの準備
@@ -37,7 +39,8 @@ print(colnames(df_analysis))
 # 3. 潜在プロファイル分析の実行 (プロファイル数 2-10)
 #----------------------------------------------------------------
 cat("\nStep 3: 潜在プロファイル分析を実行します...\n")
-lpa_models <- estimate_profiles(df_analysis, n_profiles = 2:10, model = 6)
+# models = 6 を指定することで、VLMR-LRTとB-LRTの両方に対応したモデルを計算します
+lpa_models <- estimate_profiles(df_analysis, n_profiles = 2:10, models = 6)
 cat("LPAの計算が完了しました。\n")
 
 
@@ -46,8 +49,6 @@ cat("LPAの計算が完了しました。\n")
 cat("\nStep 4: 適合度指標の計算と整形を開始します...\n")
 fit_indices <- get_fit(lpa_models)
 
-# ★★★★★ ここが最後の修正点 ★★★★★
-# 全ての `model_number` を、正しい列名 `classes_number` に修正します。
 class_proportions <- get_data(lpa_models) %>%
   count(classes_number, Class) %>%
   group_by(classes_number) %>%
@@ -58,12 +59,23 @@ class_proportions <- get_data(lpa_models) %>%
   ) %>%
   rename(Profiles = classes_number)
 
+# ★★★★★ ここにB-LRTの計算コードを追加 ★★★★★
+# 4-3. B-LRT P-value (Bootstrap Likelihood Ratio Test) の計算
+cat("B-LRT P-value の計算を開始します (非常に時間がかかる場合があります)...\n")
+blrt_results <- tibble(Profiles = 2:10, `B-LRT P-value` = NA_real_)
+for (k in 2:10) {
+  cat(paste("  計算中:", k, "クラス vs", k - 1, "クラス...\n"))
+  # modelName = "VVI" は、Step 3の models = 6 と対応しています。
+  lrt_test <- mclustBootstrapLRT(df_analysis, modelName = "VVI", maxG = k, nboot = 200)
+  blrt_results$`B-LRT P-value`[blrt_results$Profiles == k] <- lrt_test$p.value[k - 1]
+}
+cat("B-LRT P-value の計算が完了しました。\n")
+
 
 # 5. 全ての指標を一つの表に統合
 #----------------------------------------------------------------
 cat("\nStep 5: 全ての指標を一つの表に統合します...\n")
 
-# fit_indicesの列名を、必ず存在する列だけ先に変更します
 renamed_table <- fit_indices %>%
   rename(
     Profiles = Classes,
@@ -71,7 +83,6 @@ renamed_table <- fit_indices %>%
     `Sample-Size Adjusted BIC` = SABIC
   )
 
-# 'VLMR_p' 列が存在するかどうかをチェックし、処理を分岐します
 if ("VLMR_p" %in% colnames(renamed_table)) {
   renamed_table <- renamed_table %>%
     rename(`VLMR-LRT p-value` = VLMR_p)
@@ -85,19 +96,27 @@ final_table <- renamed_table %>%
   select(
     Profiles, `Log-likelihood`, AIC, BIC, `Sample-Size Adjusted BIC`, Entropy, `VLMR-LRT p-value`
   ) %>%
+  # ★★★★★ B-LRTの結果を結合する処理を追加 ★★★★★
+  left_join(blrt_results, by = "Profiles") %>%
   left_join(class_proportions, by = "Profiles") %>%
   mutate(
     across(c(`Log-likelihood`, AIC, BIC, `Sample-Size Adjusted BIC`), ~round(.x, 2)),
-    across(c(Entropy, `VLMR-LRT p-value`), ~round(.x, 3), .names = "{.col}")
+    # ★★★★★ B-LRTのp値も丸める処理を追加 ★★★★★
+    across(c(Entropy, `VLMR-LRT p-value`, `B-LRT P-value`), ~round(.x, 3), .names = "{.col}")
+  ) %>%
+  # ★★★★★ 最終的な列の順番にB-LRTを追加 ★★★★★
+  select(
+    Profiles, AIC, BIC, `Sample-Size Adjusted BIC`, Entropy, `Log-likelihood`,
+    `VLMR-LRT p-value`, `B-LRT P-value`, `% in each class`
   )
 
 
 # 6. 最終結果の表示とファイルへの保存
 #----------------------------------------------------------------
-cat("\n-------------------- 分析結果 (BLRTなし) --------------------\n")
+cat("\n-------------------- 分析結果 (フルバージョン) --------------------\n")
 print(final_table, n = Inf)
-cat("-----------------------------------------------------------------\n")
+cat("---------------------------------------------------------------------\n")
 
-output_filename <- "lpa_fit_indices_results_no_blrt.csv"
+output_filename <- "lpa_fit_indices_full_results.csv"
 write_csv(final_table, output_filename)
 cat(paste("\n分析結果が '", output_filename, "' という名前で保存されました。\n", sep=""))
