@@ -1,0 +1,69 @@
+Mplus VERSION 8.11 DEMO (Mac)
+MUTHEN & MUTHEN
+07/08/2025  12:26 PM
+
+INPUT INSTRUCTIONS
+
+  TITLE:
+        LPA for Class 13;
+
+      DATA:
+        FILE IS "..//Users/ryo/Documents/supcom_analysis/mplus/physiological_test_1st_n12151
+
+      VARIABLE:
+        NAMES ARE
+          ID gender birthdate age_entry age_scan scan_date course_code
+          tipi_n tipi_e tipi_o tipi_a tipi_c;
+        USEVARIABLES ARE
+          tipi_n tipi_e tipi_o tipi_a tipi_c;
+
+        ! === ここでクラス数を動的に指定します ===
+        CLASSES = c(13);
+
+
+      ANALYSIS:
+        TYPE = MIXTURE;
+        ESTIMATOR = MLR;
+        STARTS = 200 50;
+
+      OUTPUT:
+        TECH11 TECH14;
+
+      SAVEDATA:
+        SAVE = CPROBABILITIES;
+        FILE IS tipi_profiles_c13.dat;
+
+      PLOT:
+        TYPE = PLOT3;
+
+
+*** WARNING
+  Input line exceeded 90 characters. Some input may be truncated.
+        FILE IS "..//Users/ryo/Documents/supcom_analysis/mplus/physiological_test_1st_n12151.
+*** WARNING in DATA command
+  Statement not terminated by a semicolon:
+  FILE IS "..//Users/ryo/Documents/supcom_analysis/mplus/physiological_test_1st_n12151.
+*** WARNING in DATA command
+  Mismatched quotation in FILE option.  A quotation mark will be assumed at
+  the end of the line.
+*** ERROR in DATA command
+  The file specified for the FILE option cannot be found.  Check that this
+  file exists:  ..//Users/ryo/Documents/supcom_analysis/mplus/physiological_test_1st_n12151.
+
+Mplus VERSION 8.11 DEMO (Mac) has the following limitations:
+  Maximum number of dependent variables: 6
+  Maximum number of independent variables: 2
+  Maximum number of between variables: 2
+  Maximum number of continuous latent variables in time series analysis: 2
+
+
+MUTHEN & MUTHEN
+3463 Stoner Ave.
+Los Angeles, CA  90066
+
+Tel: (310) 391-9971
+Fax: (310) 391-8971
+Web: www.StatModel.com
+Support: Support@StatModel.com
+
+Copyright (c) 1998-2024 Muthen & Muthen

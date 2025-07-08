@@ -1,0 +1,58 @@
+Mplus VERSION 8.11 DEMO (Mac)
+MUTHEN & MUTHEN
+07/08/2025  12:30 PM
+
+INPUT INSTRUCTIONS
+
+  TITLE:
+        LPA for Class 5;
+
+      DATA:
+        ! Mplusと同じフォルダにデータがあるので、ファイル名だけで�
+        FILE IS "physiological_test_1st_n12151.csv";
+
+      VARIABLE:
+        NAMES ARE
+          ID gender birthdate age_entry age_scan scan_date course_code
+          tipi_n tipi_e tipi_o tipi_a tipi_c;
+        USEVARIABLES ARE
+          tipi_n tipi_e tipi_o tipi_a tipi_c;
+
+        ! ここでクラス数を動的に指定します
+        CLASSES = c(5);
+
+        ! 欠損値がある場合は、この下の行のコメント「!」を解除し、
+        ! 実際の欠損値の記号に合わせてください (例: -999)
+        ! MISSING ARE ALL (-999);
+
+      ANALYSIS:
+        TYPE = MIXTURE;
+        ESTIMATOR = MLR;
+        STARTS = 200 50; ! 計算の安定性を高めるためのおまじない
+
+      OUTPUT:
+        TECH11 TECH14;
+
+      SAVEDATA:
+        SAVE = CPROBABILITIES;
+        FILE IS tipi_profiles_c5.dat;
+
+      PLOT:
+        TYPE = PLOT3;
+
+
+
+
+*** WARNING
+  Input line exceeded 90 characters. Some input may be truncated.
+        ! Mplusと同じフォルダにデータがあるので、ファイル名だけで指
+*** WARNING in MODEL command
+  All variables are uncorrelated with all other variables within class.
+  Check that this is what is intended.
+   2 WARNING(S) FOUND IN THE INPUT INSTRUCTIONS
+
+
+
+
+LPA for Class 5;
+

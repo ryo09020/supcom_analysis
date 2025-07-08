@@ -1,47 +1,60 @@
 Mplus VERSION 8.11 DEMO (Mac)
 MUTHEN & MUTHEN
-07/08/2025  11:32 AM
+07/08/2025  12:31 PM
 
 INPUT INSTRUCTIONS
 
   TITLE:
-    My LPA - clean version;
+        LPA for Class 2;
 
-  DATA:
-    FILE IS "physiological_test_1st_n12151.csv";
+      DATA:
+        ! Mplusと同じフォルダにデータがあるので、ファイル名だけで�
+        FILE IS "physiological_test_1st_n12151.csv";
 
-  VARIABLE:
-    NAMES ARE
-      ID gender birthdate age_entry age_scan scan_date course_code
-      tipi_n tipi_e tipi_o tipi_a tipi_c;
-    USEVARIABLES ARE
-      tipi_n tipi_e tipi_o tipi_a tipi_c;
-    CLASSES = c(2);
+      VARIABLE:
+        NAMES ARE
+          ID gender birthdate age_entry age_scan scan_date course_code
+          tipi_n tipi_e tipi_o tipi_a tipi_c;
+        USEVARIABLES ARE
+          tipi_n tipi_e tipi_o tipi_a tipi_c;
 
-  ANALYSIS:
-    TYPE = MIXTURE;
+        ! ここでクラス数を動的に指定します
+        CLASSES = c(2);
 
-  SAVEDATA:
-    FILE IS "tipi_profiles_c2.dat";
-    SAVE = CPROBABILITIES;
+        ! 欠損値がある場合は、この下の行のコメント「!」を解除し、
+        ! 実際の欠損値の記号に合わせてください (例: -999)
+        ! MISSING ARE ALL (-999);
 
-  OUTPUT:
-    TECH11 TECH14;
+      ANALYSIS:
+        TYPE = MIXTURE;
+        ESTIMATOR = MLR;
+        STARTS = 200 50; ! 計算の安定性を高めるためのおまじない
 
-  PLOT:
-    TYPE = PLOT3;
+      OUTPUT:
+        TECH11 TECH14;
+
+      SAVEDATA:
+        SAVE = CPROBABILITIES;
+        FILE IS tipi_profiles_c2.dat;
+
+      PLOT:
+        TYPE = PLOT3;
 
 
 
+
+*** WARNING
+  Input line exceeded 90 characters. Some input may be truncated.
+        ! Mplusと同じフォルダにデータがあるので、ファイル名だけで指
 *** WARNING in MODEL command
   All variables are uncorrelated with all other variables within class.
   Check that this is what is intended.
-   1 WARNING(S) FOUND IN THE INPUT INSTRUCTIONS
+   2 WARNING(S) FOUND IN THE INPUT INSTRUCTIONS
 
 
 
 
-My LPA - clean version;
+LPA for Class 2;
 
 SUMMARY OF ANALYSIS
 
@@ -90,8 +103,8 @@ Categorical (Nominal) and Count Outcomes
   Minimum expected cell size for chi-square              0.100D-01
 Optimization algorithm                                         EMA
 Random Starts Specifications
-  Number of initial stage random starts                         20
-  Number of final stage optimizations                            4
+  Number of initial stage random starts                        200
+  Number of final stage optimizations                           50
   Number of initial stage iterations                            10
   Initial stage convergence criterion                    0.100D+01
   Random starts scale                                    0.500D+01
@@ -126,10 +139,34 @@ RANDOM STARTS RESULTS RANKED FROM THE BEST TO THE WORST LOGLIKELIHOOD VALUES
 
 Final stage loglikelihood values at local maxima, seeds, and initial stage start numbers:
 
-           -3713.789  650371           14
+           -3713.789  963053           43
+           -3713.789  860772           174
+           -3713.789  751153           110
+           -3713.789  268217           83
+           -3713.789  960438           116
+           -3713.789  950604           172
+           -3713.789  751054           117
+           -3713.789  972873           157
+           -3713.789  405079           68
+           -3713.789  259507           53
+           -3713.789  440841           118
            -3713.789  76974            16
            -3713.789  68985            17
+           -3713.789  292884           103
+           -3713.789  370466           41
+           -3713.789  373505           88
            -3713.789  27071            15
+           -3713.789  723775           97
+           -3713.789  443917           60
+           -3713.789  303634           169
+           -3713.789  46437            153
+           -3713.789  352277           42
+           -3713.789  345070           114
+           -3713.789  618000           190
+           -3713.789  12477            155
+           -3713.789  354559           73
+
+24 perturbed starting value run(s) did not converge or were rejected in the third stage.
 
 
 
@@ -166,8 +203,8 @@ BASED ON THE ESTIMATED MODEL
     Latent
    Classes
 
-       1         90.53062          0.45265
-       2        109.46938          0.54735
+       1         90.53027          0.45265
+       2        109.46973          0.54735
 
 
 FINAL CLASS COUNTS AND PROPORTIONS FOR THE LATENT CLASSES
@@ -176,8 +213,8 @@ BASED ON ESTIMATED POSTERIOR PROBABILITIES
     Latent
    Classes
 
-       1         90.53062          0.45265
-       2        109.46938          0.54735
+       1         90.53027          0.45265
+       2        109.46973          0.54735
 
 
 FINAL CLASS COUNTS AND PROPORTIONS FOR THE LATENT CLASSES
@@ -232,33 +269,33 @@ MODEL RESULTS
 Latent Class 1
 
  Means
-    TIPI_N            48.527      2.386     20.335      0.000
+    TIPI_N            48.527      2.386     20.334      0.000
     TIPI_E            45.936      2.374     19.347      0.000
     TIPI_O            55.251      3.343     16.530      0.000
-    TIPI_A            52.101      4.122     12.641      0.000
+    TIPI_A            52.101      4.122     12.640      0.000
     TIPI_C            47.843      2.002     23.898      0.000
 
  Variances
     TIPI_N            85.919      8.432     10.189      0.000
-    TIPI_E            90.496     12.631      7.164      0.000
-    TIPI_O            79.822     15.763      5.064      0.000
-    TIPI_A           106.219     12.730      8.344      0.000
+    TIPI_E            90.497     12.632      7.164      0.000
+    TIPI_O            79.822     15.764      5.064      0.000
+    TIPI_A           106.218     12.731      8.343      0.000
     TIPI_C            95.060      9.644      9.857      0.000
 
 Latent Class 2
 
  Means
-    TIPI_N            49.090      1.865     26.317      0.000
-    TIPI_E            52.987      3.048     17.386      0.000
+    TIPI_N            49.090      1.865     26.316      0.000
+    TIPI_E            52.986      3.048     17.386      0.000
     TIPI_O            46.352      3.648     12.707      0.000
     TIPI_A            46.883      1.523     30.782      0.000
-    TIPI_C            51.619      2.104     24.532      0.000
+    TIPI_C            51.619      2.104     24.531      0.000
 
  Variances
     TIPI_N            85.919      8.432     10.189      0.000
-    TIPI_E            90.496     12.631      7.164      0.000
-    TIPI_O            79.822     15.763      5.064      0.000
-    TIPI_A           106.219     12.730      8.344      0.000
+    TIPI_E            90.497     12.632      7.164      0.000
+    TIPI_O            79.822     15.764      5.064      0.000
+    TIPI_A           106.218     12.731      8.343      0.000
     TIPI_C            95.060      9.644      9.857      0.000
 
 Categorical Latent Variables
@@ -276,8 +313,8 @@ QUALITY OF NUMERICAL RESULTS
 TECHNICAL 11 OUTPUT
 
      Random Starts Specifications for the k-1 Class Analysis Model
-        Number of initial stage random starts                  20
-        Number of final stage optimizations                     4
+        Number of initial stage random starts                 200
+        Number of final stage optimizations                    50
 
 
 
@@ -286,9 +323,9 @@ TECHNICAL 11 OUTPUT
           H0 Loglikelihood Value                        -3719.430
           2 Times the Loglikelihood Difference             11.281
           Difference in the Number of Parameters                6
-          Mean                                             14.687
-          Standard Deviation                               14.880
-          P-Value                                          0.4445
+          Mean                                             14.688
+          Standard Deviation                               14.881
+          P-Value                                          0.4446
 
      LO-MENDELL-RUBIN ADJUSTED LRT TEST
 
@@ -299,8 +336,8 @@ TECHNICAL 11 OUTPUT
 TECHNICAL 14 OUTPUT
 
      Random Starts Specifications for the k-1 Class Analysis Model
-        Number of initial stage random starts                  20
-        Number of final stage optimizations                     4
+        Number of initial stage random starts                 200
+        Number of final stage optimizations                    50
 
      Random Starts Specification for the k-1 Class Model for Generated Data
         Number of initial stage random starts                   0
@@ -354,9 +391,9 @@ SAVEDATA INFORMATION
   Save missing symbol        *
 
 
-     Beginning Time:  11:32:37
-        Ending Time:  11:32:39
-       Elapsed Time:  00:00:02
+     Beginning Time:  12:31:02
+        Ending Time:  12:31:03
+       Elapsed Time:  00:00:01
 
 
 Mplus VERSION 8.11 DEMO (Mac) has the following limitations:
