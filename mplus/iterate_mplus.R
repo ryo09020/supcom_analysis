@@ -1,6 +1,24 @@
-# -------------------------------------------------------------------------
-# Mplus 潜在プロファイル分析（LPA）自動化スクリプト（最終完成版）
-# -------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# Mplus 潜在プロファイル分析（LPA）自動実行スクリプト
+# ------------------------------------------------------------------------------
+#
+# ■ このスクリプトの目的
+#   Mplusを使用して、指定された範囲のクラスター数（例: 2〜15）のLPAを
+#   全自動で実行し、結果ファイル（.inp, .out, .dat）を生成します。
+#
+# ■ 使い方
+#   1. 下の「Step 1: あなたの環境に合わせた設定」の3項目を、ご自身の環境に合わせて
+#      書き換えます。
+#   2. このRスクリプトと、分析に使うデータファイル（ヘッダー無し）を
+#      PC上の同じフォルダに置きます。
+#   3. このスクリプトを実行します。
+#
+# ■ 実行後に何が起こるか
+#   - 「tipi-j」という名前のフォルダが新しく作成されます。
+#   - Mplusが裏で何度も自動実行され、全ての関連ファイルが「tipi-j」フォルダ内に
+#     整理されて保存されます。
+#
+# ------------------------------------------------------------------------------
 
 ### Step 1: パッケージの読み込みと、あなたの環境に合わせた設定 ###
 
@@ -65,7 +83,8 @@ for (k in class_range) {
     ANALYSIS:
       TYPE = MIXTURE;
       ESTIMATOR = MLR;
-      STARTS = 200 50; ! 計算の安定性を高めるためのおまじない
+      STARTS = 200 50;
+      LRTSTARTS = 200 50 200 50; ! BLRTの計算を安定させるためのおまじない
 
     OUTPUT:
       TECH11 TECH14;
@@ -95,48 +114,6 @@ for (k in class_range) {
   setwd(original_wd)
 }
 
-
-### Step 4: 全ての結果(.out)を読み込み、サマリー表を作成・保存 ###
-
-# "tipi-j"ディレクトリにある全ての.outファイルを読み込みます
-all_results <- readModels("tipi-j", quiet = TRUE)
-
-# 適合度指標をまとめた基本の表を作成します
-summary_table <- LatexSummaryTable(
-  all_results,
-  keepCols = c("Title", "Parameters", "LL", "AIC", "BIC", "aBIC", "Entropy", "T11_LMR_PValue", "BLRT_PValue"),
-  sortBy = "Title"
-)
-
-# 各クラスの割合（%）を抽出して、表の新しい列として追加します
-class_proportions <- sapply(all_results, function(x) {
-  # モデルが正常に終了した場合のみ割合を取得
-  if (!is.null(x$results$class_counts$mostLikely)) {
-    proportions <- x$results$class_counts$mostLikely$proportion
-    paste(round(proportions * 100, 1), collapse = "/")
-  } else {
-    # エラーで終了した場合はNA（空欄）にする
-    NA
-  }
-})
-summary_table$"% in each class" <- class_proportions
-
-# 表の列名を最終的に整えます
-colnames(summary_table)[colnames(summary_table) == "LL"] <- "Log Likelihood"
-colnames(summary_table)[colnames(summary_table) == "aBIC"] <- "Adjusted BIC"
-colnames(summary_table)[colnames(summary_table) == "T11_LMR_PValue"] <- "VLMR-LRT P-value"
-colnames(summary_table)[colnames(summary_table) == "BLRT_PValue"] <- "B-LRT P-value"
-summary_table$Title <- gsub("LPA for Class |;", "", summary_table$Title)
-colnames(summary_table)[colnames(summary_table) == "Title"] <- "Profiles"
+message("\\n全てのMplusの分析が完了しました。")
 
 
-### Step 5: 結果の表示とファイルへの保存 ###
-
-# RStudioのコンソールに最終的なサマリー表を表示します
-print(summary_table)
-
-# サマリー表をCSVファイルとして保存します（Excelで開けます）
-write.csv(summary_table, "tipi-j/lpa_summary_table_final.csv", row.names = FALSE)
-
-message("\n全ての処理が完了しました。")
-message("'tipi-j'フォルダ内に全ての関連ファイルと、結果をまとめた'lpa_summary_table_final.csv'が作成されました。")

@@ -22,7 +22,8 @@ TITLE:
     ANALYSIS:
       TYPE = MIXTURE;
       ESTIMATOR = MLR;
-      STARTS = 200 50; ! 計算の安定性を高めるためのおまじない
+      STARTS = 200 50;
+      LRTSTARTS = 200 50 200 50; ! BLRTの計算を安定させるためのおまじない
 
     OUTPUT:
       TECH11 TECH14;
