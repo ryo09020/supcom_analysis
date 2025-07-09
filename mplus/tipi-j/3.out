@@ -1,6 +1,6 @@
 Mplus VERSION 8.11 DEMO (Mac)
 MUTHEN & MUTHEN
-07/08/2025   2:32 PM
+07/09/2025  12:08 AM
 
 INPUT INSTRUCTIONS
 
@@ -9,14 +9,14 @@ INPUT INSTRUCTIONS
 
       DATA:
         ! Mplusと同じフォルダにデータがあるので、ファイル名だけで�
-        FILE IS "physiological_test_1st_n12151.csv";
+        FILE IS "standardized_data_for_mplus.csv";
 
       VARIABLE:
         NAMES ARE
-          ID gender birthdate age_entry age_scan scan_date course_code
-          tipi_n tipi_e tipi_o tipi_a tipi_c;
+          ! ID gender birthdate age_entry age_scan scan_date course_code
+          z_tipi_n z_tipi_e z_tipi_o z_tipi_a z_tipi_c;
         USEVARIABLES ARE
-          tipi_n tipi_e tipi_o tipi_a tipi_c;
+          z_tipi_n z_tipi_e z_tipi_o z_tipi_a z_tipi_c;
 
         ! ここでクラス数を動的に指定します
         CLASSES = c(3);
@@ -70,7 +70,7 @@ Number of categorical latent variables                           1
 Observed dependent variables
 
   Continuous
-   TIPI_N      TIPI_E      TIPI_O      TIPI_A      TIPI_C
+   Z_TIPI_N    Z_TIPI_E    Z_TIPI_O    Z_TIPI_A    Z_TIPI_C
 
 Categorical latent variables
    C
@@ -112,7 +112,7 @@ Random Starts Specifications
   Random seed for generating random starts                       0
 
 Input data file(s)
-  physiological_test_1st_n12151.csv
+  standardized_data_for_mplus.csv
 Input data format  FREE
 
 
@@ -125,70 +125,69 @@ UNIVARIATE SAMPLE STATISTICS
          Variable/         Mean/     Skewness/   Minimum/ % with                Percentiles
         Sample Size      Variance    Kurtosis    Maximum  Min/Max      20%/60%    40%/80%    Median
 
-     TIPI_N               48.835      -0.050      25.000    0.50%      40.000     47.000     49.000
-             200.000      85.998      -0.123      74.000    1.00%      51.000     56.000
-     TIPI_E               49.795       0.241      20.000    0.50%      42.000     47.000     49.000
-             200.000     102.813       0.614      83.000    0.50%      51.000     58.000
-     TIPI_O               50.380      -0.264      24.000    1.00%      43.000     48.000     51.000
-             200.000      99.446      -0.180      74.000    1.00%      53.000     59.000
-     TIPI_A               49.245       0.038      23.000    0.50%      40.000     45.000     49.000
-             200.000     112.965      -0.445      77.000    0.50%      52.000     58.000
-     TIPI_C               49.910       0.065      26.000    0.50%      41.000     48.000     49.500
-             200.000      98.592      -0.158      77.000    0.50%      52.000     58.000
+     Z_TIPI_N              0.000      -0.050      -2.564    0.50%      -0.950     -0.197      0.018
+             200.000       0.995      -0.123       2.707    1.00%       0.233      0.771
+     Z_TIPI_E              0.000       0.241      -2.931    0.50%      -0.767     -0.275     -0.078
+             200.000       0.995       0.614       3.267    0.50%       0.119      0.807
+     Z_TIPI_O              0.000      -0.264      -2.639    1.00%      -0.738     -0.238      0.062
+             200.000       0.995      -0.180       2.363    1.00%       0.262      0.862
+     Z_TIPI_A              0.000       0.038      -2.463    0.50%      -0.868     -0.398     -0.023
+             200.000       0.995      -0.445       2.605    0.50%       0.259      0.822
+     Z_TIPI_C              0.000       0.065      -2.402    0.50%      -0.895     -0.192     -0.041
+             200.000       0.995      -0.158       2.721    0.50%       0.210      0.813
 
 RANDOM STARTS RESULTS RANKED FROM THE BEST TO THE WORST LOGLIKELIHOOD VALUES
 
 Final stage loglikelihood values at local maxima, seeds, and initial stage start numbers:
 
-           -3708.219  443917           60
-           -3708.219  939021           8
-           -3708.219  533738           11
-           -3708.219  136842           58
-           -3708.219  860772           174
-           -3708.219  637345           19
-           -3708.219  153942           31
-           -3708.219  761633           50
-           -3708.219  85462            51
-           -3708.219  292884           103
-           -3708.219  392418           28
-           -3708.219  568859           49
-           -3708.219  22089            143
-           -3708.219  263268           165
-           -3708.219  587946           120
-           -3708.219  726035           191
-           -3708.219  319144           176
-           -3708.219  887676           22
-           -3708.219  314084           81
-           -3708.219  407168           44
-           -3708.219  286735           175
-           -3708.219  417035           149
-           -3708.219  551639           55
-           -3708.219  303634           169
-           -3708.219  903369           134
-           -3708.219  373505           88
-           -3708.219  618000           190
-           -3708.219  650371           14
-           -3708.219  972873           157
-           -3708.219  931874           141
-           -3708.219  227563           63
-           -3708.219  848331           137
-           -3708.219  284109           82
-           -3708.219  354208           196
-           -3708.219  609185           181
-           -3708.219  475420           71
-           -3708.219  576220           115
-           -3708.219  526324           178
-           -3708.219  715561           125
-           -3708.219  21345            199
-           -3708.219  318230           46
-           -3708.219  783165           170
-           -3708.219  939709           112
-           -3709.139  915107           54
-           -3709.139  848969           173
-           -3711.348  124999           96
-           -3712.543  268217           83
+           -1405.222  587946           120
+           -1405.222  761633           50
+           -1405.222  475420           71
+           -1405.222  417035           149
+           -1405.222  286735           175
+           -1405.222  533738           11
+           -1405.222  637345           19
+           -1405.222  21345            199
+           -1405.222  263268           165
+           -1405.222  903369           134
+           -1405.222  618000           190
+           -1405.222  568859           49
+           -1405.222  551639           55
+           -1405.222  318230           46
+           -1405.222  354208           196
+           -1405.222  284109           82
+           -1405.222  860772           174
+           -1405.222  972873           157
+           -1405.222  848331           137
+           -1405.222  783165           170
+           -1405.222  292884           103
+           -1405.222  407168           44
+           -1405.222  314084           81
+           -1405.222  392418           28
+           -1405.222  373505           88
+           -1405.222  526324           178
+           -1405.222  443917           60
+           -1405.222  576220           115
+           -1405.222  939021           8
+           -1405.222  726035           191
+           -1405.222  136842           58
+           -1405.222  887676           22
+           -1405.222  715561           125
+           -1405.222  22089            143
+           -1405.222  85462            51
+           -1405.222  609185           181
+           -1405.222  319144           176
+           -1405.222  650371           14
+           -1405.222  153942           31
+           -1405.222  931874           141
+           -1405.222  227563           63
+           -1405.222  303634           169
+           -1406.142  848969           173
+           -1406.142  915107           54
+           -1408.350  124999           96
+           -1409.546  268217           83
 
-3 perturbed starting value run(s) did not converge or were rejected in the third stage.
+4 perturbed starting value run(s) did not converge or were rejected in the third stage.
 
 
 
@@ -206,15 +205,15 @@ Number of Free Parameters                       22
 
 Loglikelihood
 
-          H0 Value                       -3708.219
+          H0 Value                       -1405.222
           H0 Scaling Correction Factor      1.1229
             for MLR
 
 Information Criteria
 
-          Akaike (AIC)                    7460.439
-          Bayesian (BIC)                  7533.002
-          Sample-Size Adjusted BIC        7463.303
+          Akaike (AIC)                    2854.444
+          Bayesian (BIC)                  2927.007
+          Sample-Size Adjusted BIC        2857.309
             (n* = (n + 2) / 24)
 
 
@@ -225,9 +224,9 @@ BASED ON THE ESTIMATED MODEL
     Latent
    Classes
 
-       1         35.95937          0.17980
-       2         60.80969          0.30405
-       3        103.23094          0.51615
+       1         35.95928          0.17980
+       2        103.23092          0.51615
+       3         60.80980          0.30405
 
 
 FINAL CLASS COUNTS AND PROPORTIONS FOR THE LATENT CLASSES
@@ -236,9 +235,9 @@ BASED ON ESTIMATED POSTERIOR PROBABILITIES
     Latent
    Classes
 
-       1         35.95937          0.17980
-       2         60.80969          0.30405
-       3        103.23094          0.51615
+       1         35.95928          0.17980
+       2        103.23092          0.51615
+       3         60.80980          0.30405
 
 
 FINAL CLASS COUNTS AND PROPORTIONS FOR THE LATENT CLASSES
@@ -250,8 +249,8 @@ Class Counts and Proportions
    Classes
 
        1               28          0.14000
-       2               59          0.29500
-       3              113          0.56500
+       2              113          0.56500
+       3               59          0.29500
 
 
 CLASSIFICATION QUALITY
@@ -264,9 +263,9 @@ by Latent Class (Column)
 
            1        2        3
 
-    1   0.737    0.105    0.158
-    2   0.105    0.690    0.205
-    3   0.081    0.152    0.767
+    1   0.737    0.158    0.105
+    2   0.081    0.767    0.152
+    3   0.105    0.205    0.690
 
 
 Classification Probabilities for the Most Likely Latent Class Membership (Column)
@@ -274,9 +273,9 @@ by Latent Class (Row)
 
            1        2        3
 
-    1   0.574    0.172    0.254
-    2   0.048    0.670    0.282
-    3   0.043    0.117    0.840
+    1   0.574    0.254    0.172
+    2   0.043    0.840    0.117
+    3   0.048    0.282    0.670
 
 
 Logits for the Classification Probabilities for the Most Likely Latent Class Membership (Column)
@@ -284,9 +283,9 @@ by Latent Class (Row)
 
               1        2        3
 
-    1      0.815   -0.387    0.000
-    2     -1.766    0.864    0.000
-    3     -2.972   -1.971    0.000
+    1      1.202    0.387    0.000
+    2     -1.001    1.971    0.000
+    3     -2.630   -0.864    0.000
 
 
 MODEL RESULTS
@@ -297,61 +296,61 @@ MODEL RESULTS
 Latent Class 1
 
  Means
-    TIPI_N            40.900      3.322     12.310      0.000
-    TIPI_E            53.601      5.234     10.241      0.000
-    TIPI_O            41.614      4.069     10.228      0.000
-    TIPI_A            50.092      2.593     19.321      0.000
-    TIPI_C            53.726      2.726     19.712      0.000
+    Z_TIPI_N          -0.854      0.357     -2.388      0.017
+    Z_TIPI_E           0.374      0.515      0.727      0.467
+    Z_TIPI_O          -0.877      0.407     -2.154      0.031
+    Z_TIPI_A           0.080      0.243      0.327      0.744
+    Z_TIPI_C           0.383      0.274      1.400      0.161
 
  Variances
-    TIPI_N            60.586     19.101      3.172      0.002
-    TIPI_E            92.207     14.619      6.308      0.000
-    TIPI_O            75.383     20.423      3.691      0.000
-    TIPI_A            97.597     18.437      5.294      0.000
-    TIPI_C            95.123      9.779      9.727      0.000
+    Z_TIPI_N           0.701      0.221      3.172      0.002
+    Z_TIPI_E           0.892      0.141      6.308      0.000
+    Z_TIPI_O           0.754      0.204      3.691      0.000
+    Z_TIPI_A           0.860      0.162      5.294      0.000
+    Z_TIPI_C           0.960      0.099      9.727      0.000
 
 Latent Class 2
 
  Means
-    TIPI_N            45.673      5.859      7.796      0.000
-    TIPI_E            45.039      3.531     12.755      0.000
-    TIPI_O            56.167      3.777     14.872      0.000
-    TIPI_A            54.670      3.405     16.055      0.000
-    TIPI_C            48.317      2.281     21.179      0.000
+    Z_TIPI_N           0.498      0.135      3.677      0.000
+    Z_TIPI_E           0.145      0.156      0.933      0.351
+    Z_TIPI_O          -0.036      0.234     -0.152      0.879
+    Z_TIPI_A          -0.328      0.328     -0.999      0.318
+    Z_TIPI_C          -0.039      0.155     -0.254      0.800
 
  Variances
-    TIPI_N            60.586     19.101      3.172      0.002
-    TIPI_E            92.207     14.619      6.308      0.000
-    TIPI_O            75.383     20.423      3.691      0.000
-    TIPI_A            97.597     18.437      5.294      0.000
-    TIPI_C            95.123      9.779      9.727      0.000
+    Z_TIPI_N           0.701      0.221      3.172      0.002
+    Z_TIPI_E           0.892      0.141      6.308      0.000
+    Z_TIPI_O           0.754      0.204      3.691      0.000
+    Z_TIPI_A           0.860      0.162      5.294      0.000
+    Z_TIPI_C           0.960      0.099      9.727      0.000
 
 Latent Class 3
 
  Means
-    TIPI_N            53.462      1.258     42.488      0.000
-    TIPI_E            51.271      1.582     32.402      0.000
-    TIPI_O            50.024      2.338     21.392      0.000
-    TIPI_A            45.754      3.496     13.089      0.000
-    TIPI_C            49.519      1.541     32.142      0.000
+    Z_TIPI_N          -0.340      0.630     -0.540      0.589
+    Z_TIPI_E          -0.468      0.347     -1.347      0.178
+    Z_TIPI_O           0.579      0.378      1.532      0.125
+    Z_TIPI_A           0.509      0.320      1.593      0.111
+    Z_TIPI_C          -0.160      0.229     -0.698      0.485
 
  Variances
-    TIPI_N            60.586     19.101      3.172      0.002
-    TIPI_E            92.207     14.619      6.308      0.000
-    TIPI_O            75.383     20.423      3.691      0.000
-    TIPI_A            97.597     18.437      5.294      0.000
-    TIPI_C            95.123      9.779      9.727      0.000
+    Z_TIPI_N           0.701      0.221      3.172      0.002
+    Z_TIPI_E           0.892      0.141      6.308      0.000
+    Z_TIPI_O           0.754      0.204      3.691      0.000
+    Z_TIPI_A           0.860      0.162      5.294      0.000
+    Z_TIPI_C           0.960      0.099      9.727      0.000
 
 Categorical Latent Variables
 
  Means
-    C#1               -1.055      0.971     -1.086      0.278
-    C#2               -0.529      0.938     -0.564      0.573
+    C#1               -0.525      0.900     -0.583      0.560
+    C#2                0.529      0.938      0.564      0.573
 
 
 QUALITY OF NUMERICAL RESULTS
 
-     Condition Number for the Information Matrix              0.147E-02
+     Condition Number for the Information Matrix              0.628E-02
        (ratio of smallest to largest eigenvalue)
 
 
@@ -365,7 +364,7 @@ TECHNICAL 11 OUTPUT
 
      VUONG-LO-MENDELL-RUBIN LIKELIHOOD RATIO TEST FOR 2 (H0) VERSUS 3 CLASSES
 
-          H0 Loglikelihood Value                        -3713.789
+          H0 Loglikelihood Value                        -1410.792
           2 Times the Loglikelihood Difference             11.139
           Difference in the Number of Parameters                6
           Mean                                             16.040
@@ -395,11 +394,11 @@ TECHNICAL 14 OUTPUT
 
      PARAMETRIC BOOTSTRAPPED LIKELIHOOD RATIO TEST FOR 2 (H0) VERSUS 3 CLASSES
 
-          H0 Loglikelihood Value                        -3713.789
+          H0 Loglikelihood Value                        -1410.792
           2 Times the Loglikelihood Difference             11.139
           Difference in the Number of Parameters                6
-          Approximate P-Value                              0.6667
-          Successful Bootstrap Draws                            3
+          Approximate P-Value                              0.6000
+          Successful Bootstrap Draws                            5
 
 
 PLOT INFORMATION
@@ -418,11 +417,11 @@ SAVEDATA INFORMATION
 
   Order and format of variables
 
-    TIPI_N         F10.3
-    TIPI_E         F10.3
-    TIPI_O         F10.3
-    TIPI_A         F10.3
-    TIPI_C         F10.3
+    Z_TIPI_N       F10.3
+    Z_TIPI_E       F10.3
+    Z_TIPI_O       F10.3
+    Z_TIPI_A       F10.3
+    Z_TIPI_C       F10.3
     CPROB1         F10.3
     CPROB2         F10.3
     CPROB3         F10.3
@@ -436,8 +435,8 @@ SAVEDATA INFORMATION
   Save missing symbol        *
 
 
-     Beginning Time:  14:32:07
-        Ending Time:  14:32:12
+     Beginning Time:  00:08:18
+        Ending Time:  00:08:23
        Elapsed Time:  00:00:05
 
 

@@ -3,18 +3,18 @@ TITLE:
 
     DATA:
       ! Mplusと同じフォルダにデータがあるので、ファイル名だけで指定します
-      FILE IS "physiological_test_1st_n12151.csv";
+      FILE IS "standardized_data_for_mplus.csv";
 
     VARIABLE:
       NAMES ARE
-        ID gender birthdate age_entry age_scan scan_date course_code
-        tipi_n tipi_e tipi_o tipi_a tipi_c;
+        ! ID gender birthdate age_entry age_scan scan_date course_code
+        z_tipi_n z_tipi_e z_tipi_o z_tipi_a z_tipi_c;
       USEVARIABLES ARE
-        tipi_n tipi_e tipi_o tipi_a tipi_c;
-      
+        z_tipi_n z_tipi_e z_tipi_o z_tipi_a z_tipi_c;
+
       ! ここでクラス数を動的に指定します
       CLASSES = c(3); 
-
+      
       ! 欠損値がある場合は、この下の行のコメント「!」を解除し、
       ! 実際の欠損値の記号に合わせてください (例: -999)
       ! MISSING ARE ALL (-999);

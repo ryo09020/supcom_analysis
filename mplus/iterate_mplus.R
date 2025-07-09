@@ -32,10 +32,10 @@ mplus_executable_path <- "/Applications/mplusdemo/mpdemo"
 
 # 2. あなたのデータファイル名（ヘッダー無し）を指定してください
 #    このRスクリプトと、このデータファイルは同じフォルダに置いてください
-data_filename <- "physiological_test_1st_n12151.csv"
+data_filename <- "standardized_data_for_mplus.csv"
 
 # 3. 分析したいクラスター数の範囲を指定してください
-class_range <- 2:3
+class_range <- 2:5
 
 # --- あなたが設定する項目 (ここまで) ---
 
@@ -69,13 +69,13 @@ for (k in class_range) {
     VARIABLE:
       NAMES ARE
         ID gender birthdate age_entry age_scan scan_date course_code
-        tipi_n tipi_e tipi_o tipi_a tipi_c;
+        z_tipi_n z_tipi_e z_tipi_o z_tipi_a z_tipi_c;
       USEVARIABLES ARE
-        tipi_n tipi_e tipi_o tipi_a tipi_c;
-      
+        z_tipi_n z_tipi_e z_tipi_o z_tipi_a z_tipi_c;
+
       ! ここでクラス数を動的に指定します
       CLASSES = c(', k, '); 
-
+      
       ! 欠損値がある場合は、この下の行のコメント「!」を解除し、
       ! 実際の欠損値の記号に合わせてください (例: -999)
       ! MISSING ARE ALL (-999);
