@@ -198,7 +198,7 @@ radarchart(
 # 凡例の追加
 legend(
   x = "topright",
-  legend = paste("Cluster", 1:nrow(radar_data)),
+  legend = paste("Cluster", seq_len(nrow(radar_data))),
   bty = "n",
   pch = 20,
   col = border_colors,
