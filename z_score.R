@@ -174,16 +174,16 @@ radar_df <- rbind(
   radar_data                         # 実際のデータ
 )
 
-# 色の設定
-colors <- rainbow(nrow(radar_data), alpha = 0.3)
-border_colors <- rainbow(nrow(radar_data), alpha = 0.8)
+# 色の設定（半透過効果を使わない）
+colors <- rainbow(nrow(radar_data))  # alpha値を削除
+border_colors <- rainbow(nrow(radar_data))
 
-# レーダーチャートの描画
+# レーダーチャートの描画（半透過効果なし）
 radarchart(
   radar_df,
   axistype = 1,
   pcol = border_colors,
-  pfcol = colors,
+  pfcol = NA,  # 塗りつぶしを無効にして警告を回避
   plwd = 2,
   plty = 1,
   cglcol = "grey",
@@ -240,7 +240,7 @@ for (i in 1:n_clusters) {
     individual_radar_df,
     axistype = 1,
     pcol = border_colors[i],
-    pfcol = colors[i],
+    pfcol = NA,  # 塗りつぶしを無効にして警告を回避
     plwd = 3,
     plty = 1,
     cglcol = "grey",
