@@ -5,13 +5,19 @@
 # - 指定された単一のクラスター数でLPAを実行する。
 # - 適合度指標（AIC, BIC）とクラス所属率をコンソールに出力する。
 # - 結果を棒グラフとレーダーチャートで可視化する（描画は英語表記）。
+#
+# 使用方法：
+# 1. RStudioでの実行（推奨）:
+#    - 下記でファイルパスを直接指定するか、file.choose()でファイル選択
+# 2. source()関数での実行:
+#    source("z_score.R")
 #################################################################
 
 # ---------------------------------------------------------------
 # 1. パッケージの準備
 # ---------------------------------------------------------------
 # 必要なパッケージのリスト
-packages <- c("tidyverse", "tidyLPA", "knitr")
+packages <- c("tidyverse", "tidyLPA", "knitr", "fmsb")
 
 # インストールされていないパッケージをインストール
 new_packages <- packages[!(packages %in% installed.packages()[,"Package"])]
@@ -40,16 +46,38 @@ lpa_target_columns <- c("542690_00", "542700_00", "542710_00", "542720_00", "542
 # プロットのラベルに使用する項目名（英語）
 new_item_labels <- c("Item A", "Item B", "Item C", "Item D", "Item E")
 
-# データの読み込み、選択、標準化を一括処理
-if (!file.exists("dummy_data.csv")) {
-  cat("dummy_data.csvが見つかりません。ダミーデータを生成します。\n")
-  set.seed(123)
-  dummy_data <- as.data.frame(matrix(runif(500 * 5, 1, 5), ncol = 5))
-  colnames(dummy_data) <- lpa_target_columns
-  write.csv(dummy_data, "dummy_data.csv", row.names = FALSE)
+# ---------------------------------------------------------------
+# ★★★★★ ここで入力ファイルを指定 ★★★★★
+# ---------------------------------------------------------------
+input_file <- "raw_data/dummy_data.csv"
+
+# 方法2: ファイル選択ダイアログを使用（下記のコメントアウトを外す）
+# input_file <- file.choose()
+
+# 方法3: 特定のディレクトリのファイルを指定（例）
+# input_file <- "mplus/physiological_test_1st_n12151.csv"
+# ---------------------------------------------------------------
+
+# ファイルの存在確認
+if (!file.exists(input_file)) {
+  stop(paste("エラー: 指定されたファイル '", input_file, "' が見つかりません。", sep=""))
 }
 
-df_analysis <- read_csv("dummy_data.csv") %>%
+# ファイルの拡張子チェック
+if (!grepl("\\.(csv|CSV)$", input_file)) {
+  warning("警告: 指定されたファイルはCSVファイルではない可能性があります。")
+}
+
+
+# # ヘッダーがない場合
+# read_csv(input_file, col_names = FALSE)
+
+# # または特定の行をスキップしたい場合
+# read_csv(input_file, skip = 2)  # 最初の2行をスキップ
+
+# データの読み込み
+cat(paste("ファイルを読み込み中:", basename(input_file), "\n"))
+df_analysis <- read_csv(input_file) %>%
   select(all_of(lpa_target_columns)) %>%
   mutate(across(everything(), as.numeric)) %>%
   na.omit() %>%
@@ -74,9 +102,9 @@ class_stats <- get_data(lpa_model) %>%
 cat("\n--------------------------------------------------\n")
 cat(paste("--- ", CHOSEN_N_PROFILES, "-Cluster Model: Fit Indices & Class Stats ---\n", sep=""))
 cat("\n[Fit Indices]\n")
-print(fit_indices %>% select(AIC, BIC, Entropy, SABIC), row.names = FALSE)
+print(fit_indices %>% select(LogLik, AIC, BIC, SABIC, Entropy, BLRT_p))
 cat("\n[Class Membership]\n")
-print(class_stats, row.names = FALSE)
+print(class_stats)
 cat("--------------------------------------------------\n\n")
 
 
@@ -96,39 +124,6 @@ plot_data <- get_data(lpa_model) %>%
   mutate(item = factor(item, levels = lpa_target_columns, labels = new_item_labels))
 
 cat("プロット用データの準備が完了しました。\n")
-
-
-# ★★★★★ ここが最後の修正箇所です ★★★★★
-# ---------------------------------------------------------------
-# 4.5. レーダーチャート用のデータ補間 (最終修正版)
-# ---------------------------------------------------------------
-cat("Step 4.5: レーダーチャート用にデータを補間します...\n")
-
-radar_interpolated_data <- plot_data %>%
-  mutate(item_numeric = as.numeric(item)) %>%
-  group_by(Class) %>%
-  # reframe内では、グループ化された列名を直接参照します (`.x`は不要)
-  reframe({
-    # xは項目番号(1, 2, 3, 4, 5)、yはZスコア
-    x_points <- item_numeric
-    y_points <- mean_z_score
-    
-    # 多角形を閉じるため、始点(1番目の点)の情報を終点として追加
-    x_closed <- c(x_points, max(x_points) + 1)
-    y_closed <- c(y_points, y_points[1])
-    
-    # approxで補間を実行
-    interpolation_result <- approx(x_closed, y_closed, n = 200)
-    
-    # 結果をtibbleで返す
-    tibble(
-      item_interpolated = interpolation_result$x,
-      z_score_interpolated = interpolation_result$y
-    )
-  })
-
-cat("データ補間が完了しました。\n")
-
 
 # ---------------------------------------------------------------
 # 5. 棒グラフの作成と表示
@@ -156,48 +151,110 @@ profile_plot_bar <- ggplot(plot_data, aes(x = item, y = mean_z_score, fill = ite
 print(profile_plot_bar)
 cat("棒グラフが正常に作成されました。\n")
 
-
 # ---------------------------------------------------------------
-# 6. レーダーチャートの作成と表示 (線画バージョン)
+# 6. レーダーチャートの作成と表示
 # ---------------------------------------------------------------
-cat("\nStep 6: レーダーチャートを作成します (線画バージョン)...\n")
+cat("Step 6: レーダーチャートを作成します...\n")
 
-profile_plot_radar <- ggplot(
-  radar_interpolated_data,
-  aes(
-    x = item_interpolated,
-    y = z_score_interpolated,
-    group = Class, 
-    color = as.factor(Class) # 色分けのみ指定
-  )
-) +
-  # geom_path()で線を描画する
-  geom_path(linewidth = 1.2) +
-  coord_polar(start = 0) +
-  ylim(-2, 2) +
-  scale_x_continuous(
-    breaks = 1:length(new_item_labels),
-    labels = new_item_labels
-  ) +
-  # 凡例は色(color)のみに設定
-  scale_color_discrete(name = "Cluster", labels = ~paste("Cluster", .)) +
-  labs(
-    title = paste("Profiles for", CHOSEN_N_PROFILES, "Cluster Model (Radar Chart)"),
-    subtitle = "Comparison of mean z-scores across clusters",
-    x = "",
-    y = ""
-  ) +
-  theme_minimal(base_family = "sans") +
-  theme(
-    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
-    plot.subtitle = element_text(hjust = 0.5, size = 12),
-    axis.text.x = element_text(size = 12, face = "bold"),
-    axis.text.y = element_text(size = 10),
-    legend.title = element_text(size = 12, face = "bold"),
-    legend.position = "bottom"
-  )
+# レーダーチャート用のデータ準備
+radar_data <- plot_data %>%
+  select(Class, item, mean_z_score) %>%
+  pivot_wider(names_from = item, values_from = mean_z_score) %>%
+  column_to_rownames("Class")
 
-print(profile_plot_radar)
+# レーダーチャートの軸範囲を設定（±2標準偏差：約95%のデータをカバー）
+max_value <- 2.0  # +2標準偏差（約97.7%のデータがこの範囲内）
+min_value <- -2.0  # -2標準偏差
+
+# レーダーチャート用のデータフレーム作成（fmsbパッケージ用）
+# 最初の行に最大値、2行目に最小値を配置
+radar_df <- rbind(
+  rep(max_value, ncol(radar_data)),  # 最大値の行
+  rep(min_value, ncol(radar_data)),  # 最小値の行
+  radar_data                         # 実際のデータ
+)
+
+# 色の設定（半透過効果を使わない）
+colors <- rainbow(nrow(radar_data))  # alpha値を削除
+border_colors <- rainbow(nrow(radar_data))
+
+# レーダーチャートの描画（半透過効果なし）
+radarchart(
+  radar_df,
+  axistype = 1,
+  pcol = border_colors,
+  pfcol = NA,  # 塗りつぶしを無効にして警告を回避
+  plwd = 2,
+  plty = 1,
+  cglcol = "grey",
+  cglty = 1,
+  axislabcol = "grey",
+  caxislabels = c("-2", "-1", "0", "1", "2"),  # ±2標準偏差を基準にしたラベル
+  cglwd = 0.8,
+  vlcex = 1.2,
+  title = paste("Profiles for", CHOSEN_N_PROFILES, "Cluster Model (Radar Chart)\nAxis: Z-scores (±2 SD)")
+)
+
+# 凡例の追加
+legend(
+  x = "topright",
+  legend = paste("Cluster", 1:nrow(radar_data)),
+  bty = "n",
+  pch = 20,
+  col = border_colors,
+  text.col = "black",
+  cex = 1,
+  pt.cex = 2
+)
 
 cat("レーダーチャートが正常に作成されました。\n")
 
+# ---------------------------------------------------------------
+# 7. クラスターごとの個別レーダーチャート作成
+# ---------------------------------------------------------------
+cat("Step 7: クラスターごとの個別レーダーチャートを作成します...\n")
+
+# クラスター数に応じてグリッドを設定
+n_clusters <- nrow(radar_data)
+if (n_clusters <= 2) {
+  par(mfrow = c(1, n_clusters))
+} else if (n_clusters <= 4) {
+  par(mfrow = c(2, 2))
+} else if (n_clusters <= 6) {
+  par(mfrow = c(2, 3))
+} else {
+  par(mfrow = c(3, 3))
+}
+
+# 各クラスターごとにレーダーチャートを作成
+for (i in 1:n_clusters) {
+  # 各クラスター用のデータフレーム作成
+  individual_radar_df <- rbind(
+    rep(2.0, ncol(radar_data)),      # 最大値
+    rep(-2.0, ncol(radar_data)),     # 最小値
+    radar_data[i, ]                  # 該当クラスターのデータ
+  )
+  
+  # 個別レーダーチャートの描画
+  radarchart(
+    individual_radar_df,
+    axistype = 1,
+    pcol = border_colors[i],
+    pfcol = NA,  # 塗りつぶしを無効にして警告を回避
+    plwd = 3,
+    plty = 1,
+    cglcol = "grey",
+    cglty = 1,
+    axislabcol = "grey",
+    caxislabels = c("-2", "-1", "0", "1", "2"),
+    cglwd = 0.8,
+    vlcex = 1.0,
+    title = paste("Cluster", i, "Profile")
+  )
+}
+
+# グリッド設定をリセット
+par(mfrow = c(1, 1))
+
+cat("クラスターごとの個別レーダーチャートが正常に作成されました。\n")
+cat("\n分析とプロットの作成が完了しました。\n")

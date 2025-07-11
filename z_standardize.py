@@ -9,19 +9,16 @@
 import pandas as pd
 
 # 1. 入力ファイル名を指定
-input_filename = 'dummy_data.csv'
-
+input_dir = 'raw_data'
+input_filename = 'dummy_data.csv'  
 # 2. 出力ファイル名を生成
-output_filename = f'z_{input_filename}'
+output_filename = f'z_raw_data/{input_filename}'
 
 # 3. CSVファイルの読み込み
 # 指定したファイルが見つからない場合は、ここでエラーが発生して処理が終了します。
-df = pd.read_csv(input_filename, header=0)
+df = pd.read_csv(input_dir + '/' + input_filename, header=0)
 
-# 4. 標準化から除外する項目（列名）を指定（これらはそのまま出力に含める）
-columns_to_exclude = ["ID", "性別", "生年月日", "参加時年齢", "受信時年齢", "受信日", "コースコード"]
-
-# 5. 標準化したい項目を指定（これらの標準化値を追加で出力）
+# 4. 標準化したい項目を指定（これらの標準化値を追加で出力）
 columns_to_standardize = ["542690_00", "542700_00", "542710_00", "542720_00", "542730_00"]
 
 # 決定された項目を標準化
