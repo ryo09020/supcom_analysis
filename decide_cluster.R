@@ -1,95 +1,124 @@
 #################################################################
-# 潜在プロファイル分析(LPA)と適合度指標の計算・出力 Rスクリプト (最終確定版 v7)
-# (VLMR-LRTのみ計算するバージョン)
+# LPA 適合度指標 比較表作成 Rスクリプト (複数モデル実行版)
+#
+# 目的：
+# - 指定された範囲のクラスター数でLPAを一括実行する。
+# - 各モデルの適合度指標（AIC, BIC, SABIC, Entropy, BLRT_p）と
+#   クラス所属率をまとめた比較表を作成する。
+# - 結果をCSVファイルとして保存する。
 #################################################################
 
-# 1. 準備：必要なパッケージの読み込み
-#----------------------------------------------------------------
-cat("Step 1: パッケージを読み込んでいます...\n")
-library(tidyverse)
-library(tidyLPA)
+# ---------------------------------------------------------------
+# 1. パッケージの準備
+# ---------------------------------------------------------------
+# 必要なパッケージのリスト
+packages <- c("tidyverse", "tidyLPA")
+
+# インストールされていないパッケージをインストール
+new_packages <- packages[!(packages %in% installed.packages()[,"Package"])]
+if(length(new_packages)) install.packages(new_packages)
+
+# パッケージの読み込み
+lapply(packages, library, character.only = TRUE)
+
+cat("✅ Step 1: パッケージの読み込みが完了しました。\n")
 
 
+# ---------------------------------------------------------------
+# ★★★★★ ここで分析したいクラスター数の範囲を指定 ★★★★★
+# ---------------------------------------------------------------
+PROFILE_RANGE <- 2:10
+# ---------------------------------------------------------------
+
+
+# ---------------------------------------------------------------
 # 2. データの準備
-#----------------------------------------------------------------
+# ---------------------------------------------------------------
 cat("Step 2: データの準備を開始します...\n")
-my_data <- read_csv("dummy_data.csv")
+
+# 分析対象の列名を指定
 lpa_target_columns <- c("542690_00", "542700_00", "542710_00", "542720_00", "542730_00")
 
-df_selected <- my_data %>%
+# ---------------------------------------------------------------
+# ★★★★★ ここで入力ファイルを指定 ★★★★★
+# ---------------------------------------------------------------
+input_file <- "dummy_data.csv"
+# ---------------------------------------------------------------
+
+# ファイルの存在確認
+if (!file.exists(input_file)) {
+  stop(paste("❌ エラー: 指定されたファイル '", input_file, "' が見つかりません。", sep=""))
+}
+
+# データの読み込みと前処理
+cat(paste("... ファイルを読み込み中:", basename(input_file), "\n"))
+df_analysis <- read_csv(input_file) %>%
   select(all_of(lpa_target_columns)) %>%
-  mutate(across(everything(), as.numeric))
+  mutate(across(everything(), as.numeric)) %>%
+  na.omit() %>%
+  scale() %>%
+  as.data.frame()
 
-df_scaled <- as.data.frame(scale(df_selected))
-df_analysis <- na.omit(df_scaled)
-cat("分析データが準備できました。\n")
-
-
-# 3. 潜在プロファイル分析の実行 (プロファイル数 2-10)
-#----------------------------------------------------------------
-cat("\nStep 3: 潜在プロファイル分析を実行します...\n")
-# VLMR-LRTを計算するため、モデルを "VVI" (models = 6) に固定します。
-lpa_models <- estimate_profiles(df_analysis, n_profiles = 2:10, models = 6)
-cat("LPAの計算が完了しました。\n")
+cat("✅ 分析用データの準備が完了しました。\n")
 
 
-# 4. 適合度指標の計算と整形
-#----------------------------------------------------------------
-cat("\nStep 4: 適合度指標の計算と整形を開始します...\n")
+# ---------------------------------------------------------------
+# 3. LPAの実行 (複数モデル)
+# ---------------------------------------------------------------
+cat(paste("Step 3: ", min(PROFILE_RANGE), "から", max(PROFILE_RANGE), "クラスターのLPAを実行します...\n", sep=""))
+cat("... BLRTの計算を含むため、モデル数によっては時間がかかります。\n")
 
-# 4-1. 基本的な適合度指標の取得
+lpa_models <- estimate_profiles(
+  df_analysis,
+  n_profiles = PROFILE_RANGE,
+  boot_for_p = TRUE  # BLRT p-valueを計算
+)
+
+cat("✅ LPAの計算が完了しました。\n")
+
+
+# ---------------------------------------------------------------
+# 4. 適合度指標の比較表を作成
+# ---------------------------------------------------------------
+cat("Step 4: 適合度指標の比較表を作成します...\n")
+
+# 4-1. 基本的な適合度指標を取得
 fit_indices <- get_fit(lpa_models)
 
-# 4-2. 各クラスの所属割合 (%) の計算
+# 4-2. 各モデル・各クラスの所属割合 (%) を計算
 class_proportions <- get_data(lpa_models) %>%
   count(classes_number, Class) %>%
   group_by(classes_number) %>%
-  mutate(proportion = n / sum(n)) %>%
-  summarise(`% in each class` = paste(round(proportion * 100), collapse = "/"), .groups = 'drop') %>%
+  summarise(
+    `% in each class` = paste(round(n / sum(n) * 100), collapse = "/"),
+    .groups = 'drop'
+  ) %>%
   rename(Profiles = classes_number)
 
-# B-LRTの計算は不要とのことで、該当セクションは削除しました。
-
-
-# 5. 全ての指標を一つの表に統合
-#----------------------------------------------------------------
-cat("\nStep 5: 全ての指標を一つの表に統合します...\n")
-
-# fit_indicesの列名を変更
-renamed_table <- fit_indices %>%
+# 4-3. 全ての指標を一つの表に統合
+final_comparison_table <- fit_indices %>%
   rename(
     Profiles = Classes,
     `Log-likelihood` = LogLik,
-    `Sample-Size Adjusted BIC` = SABIC
-  )
-
-# 'VLMR_p' 列が存在するかどうかをチェックし、処理を分岐
-if ("VLMR_p" %in% colnames(renamed_table)) {
-  renamed_table <- renamed_table %>%
-    rename(`VLMR-LRT p-value` = VLMR_p)
-} else {
-  renamed_table <- renamed_table %>%
-    mutate(`VLMR-LRT p-value` = NA)
-}
-
-# 必要な列を選択し、クラス割合の結果を結合
-final_table <- renamed_table %>%
+    `Sample-Size Adjusted BIC` = SABIC,
+    `BLRT p-value` = BLRT_p
+  ) %>%
   select(
-    Profiles, `Log-likelihood`, AIC, BIC, `Sample-Size Adjusted BIC`, Entropy, `VLMR-LRT p-value`
+    Profiles, `Log-likelihood`, AIC, BIC, `Sample-Size Adjusted BIC`,
+    Entropy, `BLRT p-value`
   ) %>%
   left_join(class_proportions, by = "Profiles") %>%
   mutate(
     across(c(`Log-likelihood`, AIC, BIC, `Sample-Size Adjusted BIC`), ~round(.x, 2)),
-    across(c(Entropy, `VLMR-LRT p-value`), ~round(.x, 3), .names = "{.col}")
+    across(c(Entropy, `BLRT p-value`), ~round(.x, 3))
   )
 
+cat("✅ 比較表の作成が完了しました。\n")
 
-# 6. 最終結果の表示とファイルへの保存
-#----------------------------------------------------------------
-cat("\n-------------------- 分析結果 (VLMR-LRTのみ) --------------------\n")
-print(final_table, n = Inf)
-cat("---------------------------------------------------------------------\n")
 
-output_filename <- "lpa_fit_indices_vlrt_only.csv"
-write_csv(final_table, output_filename)
-cat(paste("\n分析結果が '", output_filename, "' という名前で保存されました。\n", sep=""))
+# ---------------------------------------------------------------
+# 5. 結果の出力 (CSVファイル)
+# ---------------------------------------------------------------
+output_filename <- "lpa_comparison.csv"
+write_csv(final_comparison_table, output_filename)
+cat(paste("📈 分析結果が '", output_filename, "' という名前で保存されました。\n", sep=""))

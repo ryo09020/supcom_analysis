@@ -7,60 +7,54 @@ This project analyzes supplementary communication data.
 
 ### `z_standardize.py`
 
-*   **Overview:** This script standardizes (z-scores) specified columns in a CSV file, excluding others.
-*   **Input:**
-    *   File name: `dummy_data.csv`
-    *   Format: CSV
-    *   Header: Required
-    *   Columns:
-        *   `ID`, `性別`, `生年月日`, `参加時年齢`, `受信時年齢`, `受信日`, `コースコード`: Excluded from standardization.
-        *   `542690_00`, `542700_00`, `542710_00`, `542720_00`, `542730_00`: To be standardized.
-*   **Output:**
-    *   File name: `z_dummy_data.csv`
-    *   Format: CSV
-    *   Content: The original data with the standardized columns appended.
-*   **Constraints:** The input CSV must contain the specified columns.
+*   **概要:** CSVファイル内の指定列を標準化（zスコア化）し、結果を別ディレクトリに元のファイル名で出力します。標準化対象外の列はそのまま維持されます。
+*   **入力:**
+    *   ファイル: `raw_data/dummy_data.csv` （ディレクトリとファイル名はスクリプト内で指定）
+    *   フォーマット: CSV (ヘッダー付き)
+*   **出力:**
+    *   ファイル: `z_raw_data/dummy_data.csv` （`z_raw_data` ディレクトリ内に、入力と**同じファイル名**で保存）
+    *   フォーマット: CSV
+    *   内容: 指定列がzスコア化されたデータ。標準化の過程で欠損値を持つ行は削除されます。
+*   **ユーザー設定:** スクリプト内の以下の変数を直接編集する必要があります。
+    *   `input_dir`: 入力ファイルが格納されているディレクトリ名。
+    *   `input_filename`: 入力ファイル名。
+    *   `columns_to_standardize`: 標準化**対象**とする列名のリスト。
 
-### `LPA.R`
-
-*   **Overview:** This script performs Latent Profile Analysis (LPA) and calculates fit indices, including the Bootstrap Likelihood Ratio Test (B-LRT).
-*   **Input:**
-    *   File name: `dummy_data.csv`
-    *   Format: CSV
-    *   Header: Required
-    *   Columns: `542690_00`, `542700_00`, `542710_00`, `542720_00`, `542730_00`
-*   **Output:**
-    *   File name: `lpa_fit_indices_full_results.csv`
-    *   Format: CSV
-    *   Content: A table of fit indices (AIC, BIC, SABIC, Entropy, VLMR-LRT p-value, B-LRT P-value) for LPA models with 2 to 10 profiles.
-*   **Constraints:** The input CSV must contain the specified columns.
 
 ### `decide_cluster.R`
 
-*   **Overview:** This script performs Latent Profile Analysis (LPA) and calculates fit indices, but only the VLMR-LRT.
-*   **Input:**
-    *   File name: `dummy_data.csv`
-    *   Format: CSV
-    *   Header: Required
-    *   Columns: `542690_00`, `542700_00`, `542710_00`, `542720_00`, `542730_00`
-*   **Output:**
-    *   File name: `lpa_fit_indices_vlrt_only.csv`
-    *   Format: CSV
-    *   Content: A table of fit indices (AIC, BIC, SABIC, Entropy, VLMR-LRT p-value) for LPA models with 2 to 10 profiles.
-*   **Constraints:** The input CSV must contain the specified columns.
+*   **概要:** 指定されたCSVファイルの特定項目をzスコア化した上で、複数のクラスター数（デフォルトは2〜10）で潜在プロファイル分析（LPA）を一括実行し、各モデルの適合度指標を比較するための表を作成します。
+*   **分析の流れ:**
+    1.  入力ファイル（`dummy_data.csv`）から分析対象の列を抽出します。
+    2.  対象データをzスコア化（標準化）します。
+    3.  指定された範囲のクラスター数（例: 2から10）でLPAモデルをそれぞれ推定します。
+    4.  各モデルの適合度指標（Log-likelihood, AIC, BIC, SABIC, Entropy, BLRT p-value）と、クラスごとの所属人数の割合を計算します。
+    5.  結果を一つの比較表にまとめ、CSVファイルとして出力します。
+*   **入力:**
+    *   ファイル名: `dummy_data.csv`
+    *   フォーマット: CSV
+    *   ヘッダー: 必要
+    *   列: `542690_00`, `542700_00`, `542710_00`, `542720_00`, `542730_00`
+*   **出力:**
+    *   ファイル名: `lpa_comparison.csv`
+    *   フォーマット: CSV
+    *   内容: クラスター数ごとの適合度指標と所属割合をまとめた比較表。
+*   **制約:**
+    *   分析対象の列名、入力ファイル名、クラスター数の範囲はスクリプト内で直接指定されています。
 
 ### `z_score.R`
 
-*   **Overview:** This script performs LPA for a single, specified number of clusters and visualizes the results.
-*   **Input:**
-    *   File name: `dummy_data.csv`
-    *   Format: CSV
-    *   Header: Required
-    *   Columns: `542690_00`, `542700_00`, `542710_00`, `542720_00`, `542730_00`
-*   **Output:**
-    *   Console output: Fit indices and class statistics.
-    *   Plots: A bar chart and a radar chart visualizing the profiles.
-*   **Constraints:** The number of clusters to analyze must be specified within the script.
+*   **概要:** 入力データをzスコア化した後、指定された単一のクラスター数で潜在プロファイル分析（LPA）を実行し、結果を可視化します。
+*   **分析手法のポイント:** `tidyLPA`パッケージによるLPAは、各個人が各クラスターに所属する確率（ソフトクラスタリング）を算出します。このスクリプトではその結果に基づき、各個人を**最も所属確率の高いクラスターに割り当て（ハードクラスタリング）**、その分類結果を用いて後続の分析・可視化を行います。これにより、LPAの推定結果と最終的なクラス分類の間に乖離が起きる懸念が解消されています。
+*   **入力:**
+    *   ファイル名: `dummy_data.csv`
+    *   フォーマット: CSV
+    *   ヘッダー: 必要
+    *   列: `542690_00`, `542700_00`, `542710_00`, `542720_00`, `542730_00`
+*   **出力:**
+    *   コンソール出力: 指定クラスターモデルの適合度指標（AIC, BIC等）と、各クラスターの所属人数・割合。
+    *   プロット: 各クラスターの特性（項目ごとの平均zスコア）を視覚化した棒グラフとレーダーチャート。
+*   **制約:** 分析したいクラスター数は、スクリプト内の`CHOSEN_N_PROFILES`変数で直接指定する必要があります。
 
 ### `mplus/iterate_mplus.R`
 
