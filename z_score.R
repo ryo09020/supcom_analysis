@@ -49,7 +49,7 @@ new_item_labels <- c("Item A", "Item B", "Item C", "Item D", "Item E")
 # ---------------------------------------------------------------
 # ★★★★★ ここで入力ファイルを指定 ★★★★★
 # ---------------------------------------------------------------
-input_file <- "dummy_data.csv"
+input_file <- "raw_data/dummy_data.csv"
 
 # 方法2: ファイル選択ダイアログを使用（下記のコメントアウトを外す）
 # input_file <- file.choose()
