@@ -5,10 +5,12 @@
 # pheatmapパッケージをまだインストールしていない場合は、以下の行のコメントを外して実行してください
 # install.packages("pheatmap")
 # install.packages("tidyverse")
+# install.packages("ggplot2")
 
 # パッケージを読み込みます
 library(pheatmap)
 library(tidyverse)
+library(ggplot2)
 
 
 # -------------------------------------------------------------------------
@@ -17,7 +19,7 @@ library(tidyverse)
 
 # ▼ ユーザーが設定する項目 ▼
 # ご自身のCSVファイルへのパスを指定してください
-file_path <- "raw_data/dummy_data_286items.csv" 
+file_path <- "raw_data/dummy_data_286items.csv"
 
 # データをデータフレームとして読み込みます
 # ファイルの文字コードがShift-JISの場合は fileEncoding = "CP932" を追加してください
@@ -66,48 +68,34 @@ cat("相関行列の計算が完了しました。\n")
 
 
 # -------------------------------------------------------------------------
-# Step 3: ヒートマップの描画
+# Step 3: ヒートマップの描画（スパコン対応版）
 # -------------------------------------------------------------------------
 
-# 全項目間の相関ヒートマップを作成（論文品質）
 cat("全項目間の相関ヒートマップを作成中...\n")
 
-# 項目数に応じて論文用の最適なパラメータを設定
+# 項目数に応じてパラメータを設定 (この部分は元のコードと同じ)
 n_items <- ncol(cor_matrix_all)
 cat(sprintf("項目数: %d\n", n_items))
 
-# 論文品質のヒートマップ設定（画面サイズに合わせて調整）
-# デバイスのサイズを調整して全項目が表示されるようにする
-plot_width <- min(20, max(8, n_items * 0.3))   # 最小8inch、最大20inch
-plot_height <- min(20, max(8, n_items * 0.3))  # 正方形にする
-
 if (n_items <= 30) {
-  # 30項目以下：数値表示あり、適度なセル
-  cell_size <- max(8, 200 / n_items)
   show_numbers <- TRUE
   font_size <- max(6, 120 / n_items)
   row_font_size <- max(8, 150 / n_items)
   col_font_size <- max(8, 150 / n_items)
   main_title_size <- 14
 } else if (n_items <= 50) {
-  # 31-50項目：数値表示あり、小さなセル
-  cell_size <- max(6, 150 / n_items)
   show_numbers <- TRUE
   font_size <- max(4, 80 / n_items)
   row_font_size <- max(6, 120 / n_items)
   col_font_size <- max(6, 120 / n_items)
   main_title_size <- 12
 } else if (n_items <= 100) {
-  # 51-100項目：数値表示なし、小さなセル
-  cell_size <- max(4, 120 / n_items)
   show_numbers <- FALSE
   font_size <- 4
   row_font_size <- max(4, 100 / n_items)
   col_font_size <- max(4, 100 / n_items)
   main_title_size <- 10
 } else {
-  # 100項目以上：数値表示なし、最小セル
-  cell_size <- max(2, 80 / n_items)
   show_numbers <- FALSE
   font_size <- 3
   row_font_size <- max(3, 80 / n_items)
@@ -115,83 +103,46 @@ if (n_items <= 30) {
   main_title_size <- 8
 }
 
-cat(sprintf("設定: プロットサイズ=%.1f×%.1f inch, セルサイズ=%.1f, 数値表示=%s, フォントサイズ=%d\n", 
-            plot_width, plot_height, cell_size, ifelse(show_numbers, "あり", "なし"), font_size))
 
-# プロットデバイスのサイズを設定
-if (exists("dev.list") && length(dev.list()) > 0) {
-  dev.off()  # 既存のデバイスを閉じる
-}
+# pheatmapを直接描画せず、オブジェクトとして作成
+p <- pheatmap(
+  cor_matrix_all,
+  main = "Correlation Matrix",
+  display_numbers = show_numbers,
+  number_format = "%.2f",
+  fontsize_number = font_size,
+  cluster_rows = TRUE,      # クラスタリングを有効にする場合
+  cluster_cols = TRUE,      # クラスタリングを有効にする場合
+  # cluster_rows = FALSE,   # クラスタリングしない場合はこちら
+  # cluster_cols = FALSE,
+  color = colorRampPalette(c("#2166AC", "#F7F7F7", "#B2182B"))(100),
+  border_color = "white",
+  fontsize_row = row_font_size,
+  fontsize_col = col_font_size,
+  fontsize = main_title_size,
+  angle_col = 45,
+  treeheight_row = 50, # treeheightを0にするとクラスタリングが見えないので適宜調整
+  treeheight_col = 50,
+  silent = TRUE
+)
 
-# 大きなプロットウィンドウを開く
-if (Sys.info()["sysname"] == "Darwin") {  # macOS
-  quartz(width = plot_width, height = plot_height)
-} else if (Sys.info()["sysname"] == "Windows") {  # Windows
-  windows(width = plot_width, height = plot_height)
-} else {  # Linux等
-  x11(width = plot_width, height = plot_height)
-}
-
-# 画像ファイルとして保存（PNG形式）
-image_width <- max(800, min(2400, n_items * 40))
-image_height <- max(800, min(2400, n_items * 40))
+# ファイル名を設定
 output_filename <- sprintf("correlation_heatmap_%ditems.png", n_items)
 
-cat(sprintf("画像サイズ: %d x %d ピクセルで保存します...\n", image_width, image_height))
 
-png(output_filename, width = image_width, height = image_height, res = 300)
-pheatmap(
-  cor_matrix_all,
-  main = "Correlation Matrix",
-  display_numbers = show_numbers,
-  number_format = "%.2f",
-  fontsize_number = font_size,
-  cluster_rows = FALSE,
-  cluster_cols = FALSE,
-  color = colorRampPalette(c("#2166AC", "#F7F7F7", "#B2182B"))(100),
-  cellwidth = cell_size,
-  cellheight = cell_size,
-  border_color = "white",
-  fontsize_row = row_font_size,
-  fontsize_col = col_font_size,
-  fontsize = main_title_size,
-  angle_col = 45,
-  treeheight_row = 0,
-  treeheight_col = 0
+# ggsave関数を使って、プロットを確実に正方形でファイルに保存
+cat(sprintf("ヒートマップを '%s' として正方形で保存します...\n", output_filename))
+ggsave(
+  filename = output_filename,
+  plot = p,           # pheatmapオブジェクトを指定
+  width = 12,         # 幅を12インチに指定
+  height = 12,        # 高さを12インチに指定 (幅と同じ値にする)
+  units = "in",       # 単位をインチに
+  dpi = 300,          # 解像度 (論文投稿用)
+  bg = "white"        # 背景色を白に指定
 )
-dev.off()
 
 cat(sprintf("ヒートマップが '%s' として保存されました。\n", output_filename))
-
-# 画面にも表示（プロットウィンドウが使える場合）
-if (Sys.info()["sysname"] == "Darwin") {  # macOS
-  quartz(width = plot_width, height = plot_height)
-} else if (Sys.info()["sysname"] == "Windows") {  # Windows
-  windows(width = plot_width, height = plot_height)
-} else {  # Linux等
-  x11(width = plot_width, height = plot_height)
-}
-
-pheatmap(
-  cor_matrix_all,
-  main = "Correlation Matrix",
-  display_numbers = show_numbers,
-  number_format = "%.2f",
-  fontsize_number = font_size,
-  cluster_rows = FALSE,
-  cluster_cols = FALSE,
-  color = colorRampPalette(c("#2166AC", "#F7F7F7", "#B2182B"))(100),
-  cellwidth = cell_size,
-  cellheight = cell_size,
-  border_color = "white",
-  fontsize_row = row_font_size,
-  fontsize_col = col_font_size,
-  fontsize = main_title_size,
-  angle_col = 45,
-  treeheight_row = 0,
-  treeheight_col = 0
-)
-
 cat("論文品質ヒートマップの作成が完了しました。\n")
 
 
@@ -215,18 +166,25 @@ strong_cor_indices <- which(abs(cor_matrix_all) > strong_cor_threshold & cor_mat
 
 if (nrow(strong_cor_indices) > 0) {
   cat(paste("\n強い相関 (|r| >", strong_cor_threshold, ") のペア:\n"))
+  # 上三角行列の部分だけをユニークに表示するための修正
+  printed_pairs <- c()
   for (i in seq_len(nrow(strong_cor_indices))) {
-    row_idx <- strong_cor_indices[i, 1]
-    col_idx <- strong_cor_indices[i, 2]
-    cor_value <- cor_matrix_all[row_idx, col_idx]
-    cat(sprintf("%s vs %s: r = %.3f\n", 
-                rownames(cor_matrix_all)[row_idx],
-                colnames(cor_matrix_all)[col_idx],
-                cor_value))
+    row_idx <- strong_cor_indices[i, "row"]
+    col_idx <- strong_cor_indices[i, "col"]
+    # ペアをソートして重複を避ける
+    pair_key <- paste(sort(c(rownames(cor_matrix_all)[row_idx], colnames(cor_matrix_all)[col_idx])), collapse="-")
+    
+    if (!(pair_key %in% printed_pairs)) {
+      cor_value <- cor_matrix_all[row_idx, col_idx]
+      cat(sprintf("%s vs %s: r = %.3f\n",
+                  rownames(cor_matrix_all)[row_idx],
+                  colnames(cor_matrix_all)[col_idx],
+                  cor_value))
+      printed_pairs <- c(printed_pairs, pair_key)
+    }
   }
 } else {
   cat(paste("\n強い相関 (|r| >", strong_cor_threshold, ") のペアはありませんでした。\n"))
 }
 
 cat("\n=== heatmap_all.R の実行が完了しました ===\n")
-
