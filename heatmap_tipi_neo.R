@@ -26,14 +26,7 @@ names(full_data)
 # データからTIPI-JとNEO-FFIの列名を指定してください
 # (お手元のデータに合わせて正確な列名に書き換えてください)
 tipi_j_columns <- c("X542690_00","X542700_00")
-neo_ffi_columns <- c("X542710_00","X542720_00")
-
-# ▼ 図表で表示する項目名を設定してください ▼
-# TIPI-Jの項目名（表示用）
-tipi_j_labels <- c("TIPI-J Item 1", "TIPI-J Item 2")
-# NEO-FFIの項目名（表示用）
-neo_ffi_labels <- c("NEO-FFI Item 1", "NEO-FFI Item 2")
-
+neo_ffi_columns <- c("X542690_00","X542700_00")
 # それぞれのテストのデータだけを抽出します
 tipi_j_data <- full_data[, tipi_j_columns]
 neo_ffi_data <- full_data[, neo_ffi_columns]
@@ -47,10 +40,6 @@ neo_ffi_data <- full_data[, neo_ffi_columns]
 # use="complete.obs" は、欠損値がある行を無視して計算するオプションです
 cor_matrix <- cor(tipi_j_data, neo_ffi_data, use = "complete.obs")
 
-# 相関行列の行名と列名をカスタムラベルに設定します
-rownames(cor_matrix) <- tipi_j_labels
-colnames(cor_matrix) <- neo_ffi_labels
-
 # 計算結果の確認（任意）
 # print(cor_matrix)
 
@@ -62,7 +51,7 @@ colnames(cor_matrix) <- neo_ffi_labels
 # pheatmap()関数でヒートマップを描画します
 pheatmap(
   cor_matrix,                                  # 表示する相関行列
-  main = "Correlation Heatmap between TIPI-J and NEO-FFI Items",  # グラフのタイトル（英語）
+  main = "TIPI-JとNEO-FFIの項目間相関ヒートマップ",  # グラフのタイトル
   display_numbers = TRUE,                      # セルに相関係数の数値を表示する
   number_format = "%.2f",                      # 表示する数値の小数点以下の桁数
   fontsize_number = 10,                        # セル内の数値のフォントサイズ
