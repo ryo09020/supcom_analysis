@@ -85,7 +85,7 @@ summary_table <- summary_table %>%
     aBIC, # Adjusted BIC
     Entropy,
     VLMR_p_value = any_of("T11_VLMR_PValue"),
-    BLRT_p_value = any_of("T14_BLRT_PValue"),
+    BLRT_p_value = any_of("BLRT_PValue"),
     Class_Percentages
   )
 
@@ -94,6 +94,7 @@ summary_table <- summary_table %>%
 
 # 作成した要約表をコンソールに表示します
 print(summary_table)
+
 
 # 結果をCSVファイルとして保存します
 write.csv(summary_table, "LPA_summary_table.csv", row.names = FALSE, fileEncoding = "UTF-8")

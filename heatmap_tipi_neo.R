@@ -41,7 +41,12 @@ neo_ffi_data <- full_data[, neo_ffi_columns]
 cor_matrix <- cor(tipi_j_data, neo_ffi_data, use = "complete.obs")
 
 # 計算結果の確認（任意）
-# print(cor_matrix)
+print(cor_matrix)
+print(paste("相関値の最小値:", min(cor_matrix, na.rm = TRUE)))
+print(paste("相関値の最大値:", max(cor_matrix, na.rm = TRUE)))
+print(paste("相関値の平均値:", mean(cor_matrix, na.rm = TRUE)))
+print("相関値の要約統計:")
+print(summary(as.vector(cor_matrix)))
 
 
 # -------------------------------------------------------------------------
@@ -49,6 +54,14 @@ cor_matrix <- cor(tipi_j_data, neo_ffi_data, use = "complete.obs")
 # -------------------------------------------------------------------------
 
 # pheatmap()関数でヒートマップを描画します
+# 色の範囲を相関値の実際の範囲に合わせて設定
+min_cor <- min(cor_matrix, na.rm = TRUE)
+max_cor <- max(cor_matrix, na.rm = TRUE)
+
+# 対称的な色範囲を設定（-1から1の範囲で、0が中央に来るように）
+color_range <- max(abs(c(min_cor, max_cor)))
+breaks <- seq(-color_range, color_range, length.out = 101)
+
 pheatmap(
   cor_matrix,                                  # 表示する相関行列
   main = "TIPI-JとNEO-FFIの項目間相関ヒートマップ",  # グラフのタイトル
@@ -57,7 +70,8 @@ pheatmap(
   fontsize_number = 10,                        # セル内の数値のフォントサイズ
   cluster_rows = FALSE,                        # 行（TIPI-J）をクラスタリングしない（元の順序を維持）
   cluster_cols = FALSE,                        # 列（NEO-FFI）をクラスタリングしない（元の順序を維持）
-  color = colorRampPalette(c("blue", "white", "red"))(100) # 色の指定（青:負相関, 白:無相関, 赤:正相関）
+  color = colorRampPalette(c("blue", "white", "red"))(100), # 色の指定（青:負相関, 白:無相関, 赤:正相関）
+  breaks = breaks                              # 色の境界値を明示的に指定
 )
 
 # もし画像をファイルとして保存したい場合は、以下のようにします

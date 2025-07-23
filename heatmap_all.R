@@ -104,6 +104,14 @@ if (n_items <= 30) {
 }
 
 
+# 相関値の分布を確認
+cor_values_diag_excluded <- cor_matrix_all[upper.tri(cor_matrix_all)]
+cat(paste("相関値の範囲: ", round(min(cor_values_diag_excluded), 3), " ～ ", round(max(cor_values_diag_excluded), 3), "\n"))
+cat(paste("相関値の中央値: ", round(median(cor_values_diag_excluded), 3), "\n"))
+
+# 色の境界値を-1から1の範囲で設定（0が中央の白になるように）
+breaks <- seq(-1, 1, length.out = 101)
+
 # pheatmapを直接描画せず、オブジェクトとして作成
 p <- pheatmap(
   cor_matrix_all,
@@ -116,6 +124,7 @@ p <- pheatmap(
   # cluster_rows = FALSE,   # クラスタリングしない場合はこちら
   # cluster_cols = FALSE,
   color = colorRampPalette(c("#2166AC", "#F7F7F7", "#B2182B"))(100),
+  breaks = breaks,          # 色の境界値を明示的に指定
   border_color = "white",
   fontsize_row = row_font_size,
   fontsize_col = col_font_size,
