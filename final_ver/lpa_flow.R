@@ -20,13 +20,13 @@ INPUT_FILE <- "raw_data/dummy_data.csv"  # 分析したいCSVファイルのパ�
 TARGET_COLUMNS <- c("542690_00", "542700_00", "542710_00", "542720_00", "542730_00")
 
 # ★★★ クラスター数の設定 ★★★
-PROFILE_RANGE <- 2:5  # 比較するクラスター数の範囲
+PROFILE_RANGE <- 1:5  # 比較するクラスター数の範囲
 FINAL_CLUSTERS <- 4   # 最終的に使用するクラスター数
 
 # ★★★ 出力設定 ★★★
 OUTPUT_PREFIX <- ""  # 出力ファイル名の接頭辞（空文字の場合は元ファイル名ベース）
 SAVE_COMPARISON_TABLE <- TRUE  # 適合度比較表をCSVで保存するか
-COMPARISON_TABLE_FILENAME <- "lpa_comparison_table.csv"  # 適合度比較表のファイル名
+COMPARISON_TABLE_FILENAME <- "lpa_comparison_table2.csv"  # 適合度比較表のファイル名
 
 # ★★★ 実行設定 ★★★
 SHOW_DETAILED_OUTPUT <- TRUE  # 詳細な進行状況を表示するか
@@ -187,6 +187,45 @@ create_comparison_table <- function(lpa_models) {
     # 基本的な適合度指標を取得
     fit_indices <- get_fit(lpa_models)
     cat("✅ 適合度指標の取得完了。\n")
+
+
+    # ===============================================================
+    # ▼▼▼ ここからVLMR p値の計算ロジックを挿入 ▼▼▼
+    # ===============================================================
+    cat("📊 VLMR p値を計算中...\n")
+
+    # サンプルサイズNをモデルオブジェクトから直接取得
+    N <- lpa_models[[1]]$model$n
+
+    # パラメータ数をモデルオブジェクトから直接取得
+    npar_vec <- sapply(lpa_models, function(mod) {
+      return(mod$model$df)
+    })
+    fit_indices$Parameters <- npar_vec
+
+    # 結果を保存するための空の列（NAで埋める）を用意
+    fit_indices$VLMR_p <- NA_real_
+
+    # 2番目のモデルから最後のモデルまで、順番に比較
+    for (k in 2:nrow(fit_indices)) {
+      null_model <- fit_indices[k - 1, ]
+      alt_model  <- fit_indices[k, ]
+
+      # tidyLPA::calc_lrt を実行してp値を計算
+      lmr_result <- tidyLPA::calc_lrt(
+        n = N,
+        null_ll = null_model$LogLik,
+        null_param = null_model$Parameters,
+        null_classes = null_model$Classes,
+        alt_ll = alt_model$LogLik,
+        alt_param = alt_model$Parameters,
+        alt_classes = alt_model$Classes
+      )
+      
+      # 結果（数値ベクトル）の4番目がp値
+      fit_indices$VLMR_p[k] <- lmr_result[4]
+    }
+    cat("✅ VLMR p値の計算完了。\n")
     
     # 各クラスター数の実際の所属割合を計算
     cat("📊 各クラスター数のクラス所属割合を計算中...\n")
@@ -250,16 +289,17 @@ create_comparison_table <- function(lpa_models) {
         Profiles = Classes,
         `Log-likelihood` = LogLik,
         `Sample-Size Adjusted BIC` = SABIC,
-        `BLRT p-value` = BLRT_p
+        `BLRT p-value` = BLRT_p,
+        `VLMR p-value` = VLMR_p
       ) %>%
       select(
         Profiles, `Log-likelihood`, AIC, BIC, `Sample-Size Adjusted BIC`,
-        Entropy, `BLRT p-value`
+        Entropy, `BLRT p-value`, `VLMR p-value`
       ) %>%
       left_join(class_proportions, by = "Profiles") %>%
       mutate(
         across(c(`Log-likelihood`, AIC, BIC, `Sample-Size Adjusted BIC`), ~round(.x, 2)),
-        across(c(Entropy, `BLRT p-value`), ~round(.x, 3))
+        across(c(Entropy, `BLRT p-value`, `VLMR p-value`), ~round(.x, 3))
       )
     
     cat("✅ 実際の所属割合を含む比較表の作成完了。\n\n")
