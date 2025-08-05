@@ -150,10 +150,10 @@ plot_data <- adjusted_data %>%
 
 cat("Creating boxplots...\n")
 
-# 基本の箱ひげ図
+# 基本の箱ひげ図（透明度を削除）
 p1 <- ggplot(plot_data, aes(x = Cluster, y = Value, fill = Cluster)) +
-  geom_boxplot(alpha = 0.7, outlier.alpha = 0.6) +
-  geom_jitter(width = 0.2, alpha = 0.4, size = 0.8) +
+  geom_boxplot() +
+  geom_jitter(width = 0.2, size = 0.8) +
   facet_wrap(~ Item, scales = "free_y", ncol = 3) +
   scale_fill_viridis_d(name = "Cluster") +
   labs(
@@ -171,15 +171,38 @@ p1 <- ggplot(plot_data, aes(x = Cluster, y = Value, fill = Cluster)) +
     legend.position = "bottom"
   )
 
-# 統計情報を含む箱ひげ図
+# 統計情報を含む箱ひげ図（透明度を削除）
 p2 <- ggplot(plot_data, aes(x = Cluster, y = Value, fill = Cluster)) +
-  geom_boxplot(alpha = 0.7) +
+  geom_boxplot() +
   stat_summary(fun = mean, geom = "point", shape = 23, size = 3, 
                fill = "white", color = "black") +
   facet_wrap(~ Item, scales = "free_y", ncol = 3) +
   scale_fill_viridis_d(name = "Cluster") +
   labs(
     title = paste(plot_title, "(with mean)"),
+    subtitle = paste("◇: Mean value, Covariate adjustment:", paste(covariates, collapse = ", ")),
+    x = "Cluster",
+    y = "Adjusted Value"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, hjust = 0.5),
+    plot.subtitle = element_text(size = 10, hjust = 0.5),
+    axis.text.x = element_text(angle = 0),
+    strip.text = element_text(size = 10),
+    legend.position = "bottom"
+  )
+
+# バイオリンプロット
+p3 <- ggplot(plot_data, aes(x = Cluster, y = Value, fill = Cluster)) +
+  geom_violin() +
+  geom_boxplot(width = 0.1, fill = "white") +
+  stat_summary(fun = mean, geom = "point", shape = 23, size = 2, 
+               fill = "red", color = "black") +
+  facet_wrap(~ Item, scales = "free_y", ncol = 3) +
+  scale_fill_viridis_d(name = "Cluster") +
+  labs(
+    title = paste(plot_title, "(violin plot)"),
     subtitle = paste("◇: Mean value, Covariate adjustment:", paste(covariates, collapse = ", ")),
     x = "Cluster",
     y = "Adjusted Value"
@@ -244,6 +267,11 @@ for (item in target_items) {
 # -------------------------------------------------------------------------
 # Step 7: 図の保存（個別保存）
 # -------------------------------------------------------------------------
+
+# ファイルサイズを項目数に応じて調整
+width_size <- max(12, length(target_items) * 2)
+height_size <- max(10, ceiling(length(target_items) / 3) * 4)
+
 cat(paste("\nSaving boxplot with scatter points as: boxplot_scatter.png\n"))
 ggsave(
   filename = "boxplot_scatter.png",
@@ -268,6 +296,18 @@ ggsave(
 )
 cat("Saved boxplot_mean.png\n")
 
+cat(paste("Saving violin plot as: violin_plot.png\n"))
+ggsave(
+  filename = "violin_plot.png",
+  plot = p3,
+  width = width_size,
+  height = height_size,
+  units = "in",
+  dpi = 300,
+  bg = "white"
+)
+cat("Saved violin_plot.png\n")
+
 # -------------------------------------------------------------------------
 # Step 8: クラスターごと・項目ごとの棒グラフ作成
 # -------------------------------------------------------------------------
@@ -280,7 +320,7 @@ bar_data <- plot_data %>%
   )
 
 barplot <- ggplot(bar_data, aes(x = Item, y = Mean, fill = Item)) +
-  geom_bar(stat = "identity", position = "dodge", alpha = 0.8) +
+  geom_bar(stat = "identity", position = "dodge") +
   facet_wrap(~ Cluster, nrow = 1) +
   scale_fill_viridis_d(name = "Item") +
   labs(
@@ -320,6 +360,8 @@ cat(paste("Barplot saved as", barplot_filename, "\n"))
 
 cat("\n=== スクリプト実行完了 ===\n")
 cat("作成された図:\n")
-cat("1. 散布点付き箱ひげ図\n")
-cat("2. 平均値付き箱ひげ図\n")
+cat("1. 散布点付き箱ひげ図 (boxplot_scatter.png)\n")
+cat("2. 平均値付き箱ひげ図 (boxplot_mean.png)\n")
+cat("3. バイオリンプロット (violin_plot.png)\n")
+cat("4. クラスター別棒グラフ (cluster_barplot.png)\n")
 cat("共変量調整により、指定した変数の影響を除去した値で比較しています。\n")
