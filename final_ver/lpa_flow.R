@@ -167,7 +167,8 @@ run_lpa_models <- function(df_analysis, profile_range = PROFILE_RANGE) {
   lpa_models <- estimate_profiles(
     analysis_data,
     n_profiles = profile_range,
-    boot_for_p = TRUE  # BLRT p-valueを計算
+    boot_for_p = TRUE,  # BLRT p-valueを計算
+    models= 6
   )
   
   cat("✅ LPA計算完了。\n")
@@ -236,7 +237,7 @@ create_comparison_table <- function(lpa_models) {
     for(i in 1:length(lpa_models)) {
       # tidyLPAモデル名から正しいクラスター数を抽出
       model_name <- names(lpa_models)[i]
-      profiles_num <- as.numeric(gsub("model_1_class_", "", model_name))
+      profiles_num <- as.numeric(gsub("model_6_class_", "", model_name))
       
       if (SHOW_DETAILED_OUTPUT) {
         cat(paste("   処理中:", model_name, "-> クラスター数:", profiles_num, "\n"))
@@ -290,16 +291,26 @@ create_comparison_table <- function(lpa_models) {
         `Log-likelihood` = LogLik,
         `Sample-Size Adjusted BIC` = SABIC,
         `BLRT p-value` = BLRT_p,
-        `VLMR p-value` = VLMR_p
-      ) %>%
-      select(
-        Profiles, `Log-likelihood`, AIC, BIC, `Sample-Size Adjusted BIC`,
-        Entropy, `BLRT p-value`, `VLMR p-value`
+        `VLMR p-value` = VLMR_p,
+        `Prob Min` = prob_min,
+        `Prob Max` = prob_max,
+        `N Min` = n_min,
+        `N Max` = n_max,
+        `BLRT Value` = BLRT_val
       ) %>%
       left_join(class_proportions, by = "Profiles") %>%
       mutate(
-        across(c(`Log-likelihood`, AIC, BIC, `Sample-Size Adjusted BIC`), ~round(.x, 2)),
-        across(c(Entropy, `BLRT p-value`, `VLMR p-value`), ~round(.x, 3))
+        across(c(`Log-likelihood`, AIC, AWE, BIC, CAIC, CLC, KIC, `Sample-Size Adjusted BIC`, ICL), ~round(.x, 2)),
+        across(c(Entropy, `BLRT p-value`, `VLMR p-value`, `Prob Min`, `Prob Max`), ~round(.x, 3)),
+        across(c(`BLRT Value`), ~round(.x, 2)),
+        across(c(Profiles, Parameters, `N Min`, `N Max`), ~as.integer(.x))
+      ) %>%
+      # 列の順序を整理（モデル情報→基本情報→適合度指標→分類精度→その他）
+      select(
+        Model, Profiles, `Log-likelihood`, AIC, BIC, `Sample-Size Adjusted BIC`, AWE, CAIC, CLC, KIC, ICL,
+        Entropy, `BLRT p-value`, `VLMR p-value`, `BLRT Value`,
+        `Prob Min`, `Prob Max`, `N Min`, `N Max`, Parameters,
+        `% in each class`
       )
     
     cat("✅ 実際の所属割合を含む比較表の作成完了。\n\n")
@@ -374,7 +385,7 @@ get_selected_model <- function(lpa_models, n_clusters) {
   cat(paste("🔍 利用可能なモデル名:", paste(model_names, collapse = ", "), "\n"))
   
   # tidyLPAの命名規則に従ってモデルを検索
-  target_pattern <- paste0("model_1_class_", n_clusters)
+  target_pattern <- paste0("model_6_class_", n_clusters)
   model_index <- which(model_names == target_pattern)
   
   if (length(model_index) == 0) {
