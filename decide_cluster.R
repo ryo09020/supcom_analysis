@@ -109,27 +109,51 @@ class_proportions <- get_data(lpa_models) %>%
   ) %>%
   rename(Profiles = classes_number) # 最終的な列名をProfilesに変更
 
+cat("利用可能な全ての指標:", names(fit_indices), "\n")
 
-# --- 比較表を整形 ---
+# --- 全ての指標を含む包括的な比較表を作成 ---
 final_comparison_table <- fit_indices %>%
   rename(
     Profiles = Classes,
     `Log-likelihood` = LogLik,
     `Sample-Size Adjusted BIC` = SABIC,
     `BLRT p-value` = BLRT_p,
-    `VLMR p-value` = VLMR_p
+    `VLMR p-value` = VLMR_p,
+    `Prob Min` = prob_min,
+    `Prob Max` = prob_max,
+    `N Min` = n_min,
+    `N Max` = n_max,
+    `BLRT Value` = BLRT_val
   ) %>%
-  select(
-    Profiles, `Log-likelihood`, AIC, BIC, `Sample-Size Adjusted BIC`,
-    Entropy, `BLRT p-value`, `VLMR p-value`
-  ) %>%
+  # 全ての列を保持（Modelも含める）
   left_join(class_proportions, by = "Profiles") %>%
+  # 数値の丸め処理を適用
   mutate(
-    across(c(`Log-likelihood`, AIC, BIC, `Sample-Size Adjusted BIC`), ~round(.x, 2)),
-    across(c(Entropy, `BLRT p-value`, `VLMR p-value`), ~round(.x, 3))
+    # 大きな数値（対数尤度、情報量基準）は小数点第2位まで
+    across(c(`Log-likelihood`, AIC, AWE, BIC, CAIC, CLC, KIC, `Sample-Size Adjusted BIC`, ICL), ~round(.x, 2)),
+    # 確率・p値・エントロピーは小数点第3位まで
+    across(c(Entropy, `BLRT p-value`, `VLMR p-value`, `Prob Min`, `Prob Max`), ~round(.x, 3)),
+    # BLRT統計量は小数点第2位まで
+    across(c(`BLRT Value`), ~round(.x, 2)),
+    # 整数値はそのまま
+    across(c(Profiles, Parameters, `N Min`, `N Max`), ~as.integer(.x))
+  ) %>%
+  # 列の順序を整理（モデル情報→基本情報→適合度指標→分類精度→その他）
+  select(
+    Model, Profiles, `Log-likelihood`, AIC, BIC, `Sample-Size Adjusted BIC`, AWE, CAIC, CLC, KIC, ICL,
+    Entropy, `BLRT p-value`, `VLMR p-value`, `BLRT Value`,
+    `Prob Min`, `Prob Max`, `N Min`, `N Max`, Parameters,
+    `% in each class`
   )
 
-cat("✅ 比較表の作成が完了しました。\n")
+cat("✅ 包括的な比較表の作成が完了しました。\n")
+cat("📊 含まれる指標の説明:\n")
+cat("   [情報量基準] AIC, BIC, SABIC, AWE, CAIC, CLC, KIC, ICL - 小さいほど良い\n")
+cat("   [分類精度] Entropy - 大きいほど良い (0-1)\n")
+cat("   [統計的検定] BLRT/VLMR p-value - <0.05で有意\n")
+cat("   [分類確率] Prob Min/Max - 各クラスの最小/最大分類確率\n")
+cat("   [クラスサイズ] N Min/Max - 最小/最大クラスサイズ\n")
+cat("   [その他] Parameters - 推定パラメータ数\n\n")
 
 # ---------------------------------------------------------------
 # 5. 結果の出力 (CSVファイル)
