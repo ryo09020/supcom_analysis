@@ -1,5 +1,7 @@
 # install.packages("dplyr") # もしdplyrがなければインストールしてください
+# install.packages("effectsize") # 効果量計算のために追加
 library(dplyr)
+library(effectsize)
 
 # 1. データの読み込み
 # 実際にはご自身のファイルパスを指定してください
@@ -28,40 +30,44 @@ results_summary <- data.frame()
 
 # (A) 年齢 (age) の比較: t検定
 t_test_age <- t.test(age ~ status, data = t1_data)
+effect_size_age <- cohens_d(age ~ status, data = t1_data)
 results_summary <- rbind(results_summary, data.frame(
   variable = "age",
   test_type = "t-test",
   statistic_name = "t-value",
   statistic_value = t_test_age$statistic,
   p_value = t_test_age$p.value,
-  completer_mean = t_test_age$estimate[1],
-  dropout_mean = t_test_age$estimate[2],
+  effect_size_name = "Cohen's d",
+  effect_size_value = effect_size_age$Cohens_d,
   is_significant = ifelse(t_test_age$p.value < 0.05, "Yes", "No")
 ))
 
 # (B) 性別 (sex) の比較: カイ二乗検定
-chi_test_sex <- chisq.test(table(t1_data$status, t1_data$sex))
+sex_table <- table(t1_data$status, t1_data$sex)
+chi_test_sex <- chisq.test(sex_table)
+effect_size_sex <- cohens_w(sex_table)
 results_summary <- rbind(results_summary, data.frame(
   variable = "sex",
   test_type = "chi-squared test",
   statistic_name = "chi-squared",
   statistic_value = chi_test_sex$statistic,
   p_value = chi_test_sex$p.value,
-  completer_mean = NA, # カイ二乗検定では平均値はなし
-  dropout_mean = NA,
+  effect_size_name = "Cohen's W",
+  effect_size_value = effect_size_sex$Cohens_w,
   is_significant = ifelse(chi_test_sex$p.value < 0.05, "Yes", "No")
 ))
 
 # (C) 教育年数 (years_of_education) の比較: t検定
 t_test_edu <- t.test(years_of_education ~ status, data = t1_data)
+effect_size_edu <- cohens_d(years_of_education ~ status, data = t1_data)
 results_summary <- rbind(results_summary, data.frame(
   variable = "years_of_education",
   test_type = "t-test",
   statistic_name = "t-value",
   statistic_value = t_test_edu$statistic,
   p_value = t_test_edu$p.value,
-  completer_mean = t_test_edu$estimate[1],
-  dropout_mean = t_test_edu$estimate[2],
+  effect_size_name = "Cohen's d",
+  effect_size_value = effect_size_edu$Cohens_d,
   is_significant = ifelse(t_test_edu$p.value < 0.05, "Yes", "No")
 ))
 
@@ -112,7 +118,7 @@ output_file <- "attrition_analysis_summary.csv"
 write.csv(flowchart_summary, output_file, row.names = FALSE, fileEncoding = "UTF-8")
 
 # 追記モード(append = TRUE)で、間に空白行を一行追加する
-write.table("\n", output_file, append = TRUE, col.names = FALSE, row.names = FALSE, quote = FALSE)
+write.table("\n--- Statistical Test Results ---\n", output_file, append = TRUE, col.names = FALSE, row.names = FALSE, quote = FALSE)
 
 # 最後に統計的検定の結果を追記する
 # write.csvはappendをサポートしていないため、write.tableを使い、カンマ区切りを指定する
