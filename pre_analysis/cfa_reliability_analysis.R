@@ -6,7 +6,7 @@
 library(lavaan)
 library(psych)
 library(knitr)
-library(tidySEM) # ★ tidySEM を読み込む
+# library(tidySEM) # ★ tidySEM を読み込む
 library(ggplot2) # ★ グラフの調整に使う
 
 # ===================================================================
@@ -32,7 +32,7 @@ factors_to_analyze <- list(
 )
 
 # 5. パス図を描画するかどうか (TRUE = 描画する, FALSE = 描画しない)
-create_plots <- TRUE
+create_plots <- FALSE
 
 # ===================================================================
 # 分析関数 (この部分は編集不要です)
@@ -93,7 +93,7 @@ validate_multiple_factors <- function(file_path, factors_list, reverse_items, ma
       cat("\n--- パス図を描画します (tidySEMを使用) ---\n")
       try({
         # tidySEMでパス図のレイアウトを作成
-        p <- graph_sem(model = cfa_fit)
+        # p <- graph_sem(model = cfa_fit)
         
         # 描画して表示
         print(p + ggtitle(paste("Path Diagram for", factor_name)))
