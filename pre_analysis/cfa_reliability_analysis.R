@@ -2,16 +2,17 @@
 # install.packages("lavaan")
 # install.packages("psych")
 # install.packages("knitr")
-# install.packages("lavaanPlot") # パス図描画に必要
+# install.packages("tidySEM") # ★ これまでの代替として tidySEM をインストール
 library(lavaan)
 library(psych)
 library(knitr)
-library(lavaanPlot)
+library(tidySEM) # ★ tidySEM を読み込む
+library(ggplot2) # ★ グラフの調整に使う
 
 # ===================================================================
 # パラメータ設定 (利用者はこの部分を編集してください)
 # ===================================================================
-
+# (この部分は変更ありません)
 # 1. データが含まれるCSVファイルのパス
 file_path <- "cfa_dummy.csv" 
 
@@ -22,7 +23,6 @@ max_score <- 5
 reverse_items <- c("N2", "N4", "E1", "E5", "A2", "A6", "C1", "C3")
 
 # 4. 分析する因子の定義
-# list( 因子名1 = c(項目名, ...), 因子名2 = c(項目名, ...), ... ) の形式で指定します。
 factors_to_analyze <- list(
   Neuroticism = c("N1", "N2", "N3", "N4", "N5"),
   Extraversion = c("E1", "E2", "E3", "E4", "E5"),
@@ -41,14 +41,10 @@ create_plots <- TRUE
 #' 質問紙の複数因子における妥当性、信頼性、パス図を検証する関数
 validate_multiple_factors <- function(file_path, factors_list, reverse_items, max_score, create_plots) {
   
-  # --- 1. データの読み込み ---
-  if (!file.exists(file_path)) {
-    stop("指定されたファイルが見つかりません: ", file_path)
-  }
+  # (この部分は変更ありません)
+  if (!file.exists(file_path)) { stop("指定されたファイルが見つかりません: ", file_path) }
   data <- read.csv(file_path, header = TRUE, stringsAsFactors = FALSE)
   cat("CSVファイルの読み込みが完了しました。\n")
-  
-  # --- 2. 逆転項目の処理 (この関数内での分析用) ---
   if (length(reverse_items) > 0) {
     if (!all(reverse_items %in% names(data))) {
       missing_cols <- setdiff(reverse_items, names(data))
@@ -57,10 +53,9 @@ validate_multiple_factors <- function(file_path, factors_list, reverse_items, ma
     data[, reverse_items] <- (max_score + 1) - data[, reverse_items]
     cat("分析のため、メモリ上で逆転項目を処理しました:\n", paste(reverse_items, collapse = ", "), "\n")
   }
-  
   all_results <- list()
   
-  # --- 3. 各因子についてループ処理 ---
+  # --- 各因子についてループ処理 ---
   for (factor_name in names(factors_list)) {
     
     item_columns <- factors_list[[factor_name]]
@@ -92,30 +87,29 @@ validate_multiple_factors <- function(file_path, factors_list, reverse_items, ma
     cat("\n--- 確認的因子分析 (CFA) の結果 ---\n")
     print(summary(cfa_fit, fit.measures = TRUE))
     
-    # --- 3.5 パス図の描画 (lavaanPlotを使用) ---
+    # ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼
+    # 【変更点】パス図の描画を tidySEM に変更
     if (create_plots) {
-      cat("\n--- パス図を描画します ---\n")
+      cat("\n--- パス図を描画します (tidySEMを使用) ---\n")
       try({
-        lavaanPlot(model = cfa_fit, 
-                   node_options = list(shape = "box", fontname = "Helvetica"), 
-                   edge_options = list(color = "grey"), 
-                   coefs = TRUE,        # パス係数を表示
-                   stand = TRUE,        # 標準化係数を表示
-                   graph_options = list(rankdir = "LR"), # 左から右へのレイアウト
-                   title = paste("Path Diagram for", factor_name))
+        # tidySEMでパス図のレイアウトを作成
+        p <- graph_sem(model = cfa_fit)
+        
+        # 描画して表示
+        print(p + ggtitle(paste("Path Diagram for", factor_name)))
+        
       }, silent = TRUE)
     }
+    # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
     
+    # (この部分は変更ありません)
     omega_results <- try(omega(data[, item_columns], nfactors = 1, fm = "ml"), silent = TRUE)
-    
     if (inherits(omega_results, "try-error")) {
       cat("\n--- マクドナルドのω係数の計算でエラーが発生しました ---\n")
       cat(omega_results[1], "\n")
       omega_t_value <- NA
       status <- "Omega Error"
     } else {
-      # ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼
-      # 【修正点】omega_tの値が正常に取得できたかを確認する処理を追加
       if (!is.null(omega_results$omega_t) && length(omega_results$omega_t) == 1) {
         omega_t_value <- omega_results$omega_t
         status <- "Success"
@@ -124,9 +118,7 @@ validate_multiple_factors <- function(file_path, factors_list, reverse_items, ma
         omega_t_value <- NA
         status <- "Omega Value Error"
       }
-      # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
     }
-    
     all_results[[factor_name]] <- list(
       CFI = fit_indices["cfi"], TLI = fit_indices["tli"],
       RMSEA = fit_indices["rmsea"], SRMR = fit_indices["srmr"],
@@ -134,7 +126,7 @@ validate_multiple_factors <- function(file_path, factors_list, reverse_items, ma
     )
   }
   
-  # --- 4. 最終結果のサマリー表示 ---
+  # --- 最終結果のサマリー表示 ---
   cat("\n\n########################################################\n")
   cat("############### 全因子の分析結果サマリー ###############\n")
   cat("########################################################\n\n")
