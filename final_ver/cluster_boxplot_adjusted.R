@@ -34,8 +34,9 @@ cluster_column <- "Class"
 # 分析したい項目名（複数選択可能）
 target_items <- c("X542690_00", "X542700_00", "X542710_00", "X542720_00", "X542730_00")
 
-# 共変量として調整したい項目（例：性別、年齢など）
-covariates <- c("sex", "age")
+# 共変量として調整したい項目（例：性別、年齢、教育年数など）
+# 注意：final_educationを指定すると自動的にyears_of_educationに変換されます
+covariates <- c("sex", "age", "years_of_education")
 
 # 図のタイトル
 plot_title <- "Distribution of cluster-specific item values (adjusted for covariates)"
@@ -57,9 +58,24 @@ data <- read.csv(file_path, stringsAsFactors = FALSE)
 cat("利用可能な列名:\n")
 print(names(data))
 
+# 共変量の調整：final_educationがあればyears_of_educationに置き換え
+adjusted_covariates <- covariates
+if ("final_education" %in% covariates) {
+  adjusted_covariates <- c(adjusted_covariates[adjusted_covariates != "final_education"], "years_of_education")
+  cat("注意: final_educationをyears_of_educationに変換して使用します\n")
+}
+
 # 必要な列が存在するかチェック
-required_columns <- c(cluster_column, target_items, covariates)
-missing_columns <- required_columns[!required_columns %in% names(data)]
+original_required_columns <- c(cluster_column, target_items, covariates)
+# final_educationが含まれている場合は、それをチェック対象に含める
+check_columns <- original_required_columns
+if ("years_of_education" %in% adjusted_covariates && "final_education" %in% covariates) {
+  check_columns <- c(cluster_column, target_items, covariates)
+} else {
+  check_columns <- c(cluster_column, target_items, adjusted_covariates)
+}
+
+missing_columns <- check_columns[!check_columns %in% names(data)]
 
 if (length(missing_columns) > 0) {
   cat("エラー: 以下の列がデータに見つかりません:\n")
@@ -74,8 +90,29 @@ cat("データを前処理中...\n")
 # 必要な列のみを選択
 analysis_data <- data %>%
   select(all_of(required_columns)) %>%
+  # 教育年数の変換を追加（final_educationが共変量に含まれている場合）
+  {if("final_education" %in% covariates) {
+    mutate(., years_of_education = case_when(
+      final_education == 1 ~ 9,
+      final_education == 2 ~ 12,
+      final_education == 3 ~ 14,
+      final_education == 4 ~ 14,
+      final_education == 5 ~ 16,
+      final_education == 6 ~ 18,
+      final_education == 7 ~ NA_real_,
+      TRUE ~ NA_real_
+    ))
+  } else {
+    .
+  }} %>%
   # 数値列を数値型に変換
   mutate(across(all_of(c(target_items, covariates)), as.numeric)) %>%
+  # years_of_educationがあれば数値型に変換
+  {if("years_of_education" %in% names(.)) {
+    mutate(., years_of_education = as.numeric(years_of_education))
+  } else {
+    .
+  }} %>%
   # クラスター列を因子型に変換
   mutate(!!sym(cluster_column) := as.factor(!!sym(cluster_column))) %>%
   # 欠損値を除外
@@ -105,8 +142,8 @@ adjusted_data <- analysis_data
 for (item in target_items) {
   cat(paste("項目", item, "を調整中...\n"))
   
-  # 共変量を含む回帰式を作成
-  covariates_formula <- paste(covariates, collapse = " + ")
+  # 共変量を含む回帰式を作成（調整済み共変量を使用）
+  covariates_formula <- paste(adjusted_covariates, collapse = " + ")
   formula_str <- paste(item, "~", covariates_formula)
   
   # 線形回帰モデルを実行
