@@ -9,18 +9,21 @@ library(knitr)
 # ===================================================================
 
 # 1. データが含まれるCSVファイルのパス
-file_path <- "longitudinal_dummy_data.csv" 
+file_path <- "longitudinal_dummy_data.csv"
 
 # 2. 分析する変数のペアを定義
 # list( "分析したい変数名" = c("Time1の列名", "Time2の列名"), ... ) の形式で指定します。
 # 下位尺度得点や合計点など、比較したい変数のペアを必要なだけ追加できます。
 variables_to_analyze <- list(
-  "神経症傾向スコア" = c("N_Score_T1", "N_Score_T2"),
-  "外向性スコア"     = c("E_Score_T1", "E_Score_T2"),
-  "開放性スコア"     = c("O_Score_T1", "O_Score_T2"),
-  "調和性スコア"     = c("A_Score_T1", "A_Score_T2"),
-  "誠実性スコア"     = c("C_Score_T1", "C_Score_T2")
+  "N_Score"     = c("N_Score_T1", "N_Score_T2"),
+  "E_Score"     = c("E_Score_T1", "E_Score_T2"),
+  "O_Score"     = c("O_Score_T1", "O_Score_T2"),
+  "A_Score"     = c("A_Score_T1", "A_Score_T2"),
+  "C_Score"     = c("C_Score_T1", "C_Score_T2")
 )
+
+# 3. 出力設定
+output_log_file <- "ICC_analysis_log.txt"  # ログファイル名（NULLで出力しない）
 
 # ===================================================================
 # 分析関数 (この部分は編集不要です)
@@ -30,8 +33,18 @@ variables_to_analyze <- list(
 #'
 #' @param file_path character. データファイルのパス。
 #' @param variables_list list. 分析対象の変数ペアのリスト。
+#' @param output_log_file character. ログファイル名（NULLの場合は保存しない）。
 #'
-calculate_icc_for_variables <- function(file_path, variables_list) {
+calculate_icc_for_variables <- function(file_path, variables_list, output_log_file = NULL) {
+
+  # ログ出力の開始
+  if (!is.null(output_log_file)) {
+    sink(output_log_file, split = TRUE)  # split=TRUEでコンソールにも表示
+    cat("==================================================================\n")
+    cat("ICC分析ログ - 開始時刻: ", as.character(Sys.time()), "\n")
+    cat("データファイル: ", file_path, "\n")
+    cat("==================================================================\n\n")
+  }
   
   # --- 1. データの読み込み ---
   if (!file.exists(file_path)) {
@@ -65,8 +78,38 @@ calculate_icc_for_variables <- function(file_path, variables_list) {
     # 対象の2列を抽出
     icc_data <- data[, c(time1_col, time2_col)]
     
+    # 数値でないデータを除外（NAや文字列など）
+    icc_data[[time1_col]] <- as.numeric(as.character(icc_data[[time1_col]]))
+    icc_data[[time2_col]] <- as.numeric(as.character(icc_data[[time2_col]]))
+    
+    # 欠損値（NA、数値変換できない文字列を含む）を除いた完全なケースのみを使用
+    complete_cases <- complete.cases(icc_data)
+    icc_data_complete <- icc_data[complete_cases, ]
+    
+    # 使用した行数を表示
+    total_rows <- nrow(icc_data)
+    used_rows <- nrow(icc_data_complete)
+    missing_rows <- total_rows - used_rows
+    
+    cat("データ情報:\n")
+    cat("  総行数: ", total_rows, "\n")
+    cat("  使用行数: ", used_rows, "\n")
+    if (missing_rows > 0) {
+      cat("  欠損により除外された行数: ", missing_rows, "\n")
+    }
+    cat("\n")
+    
     # ICCの計算 (psychパッケージのICC関数は引数なしで複数のタイプを計算します)
-    icc_results <- ICC(icc_data)
+    icc_results <- ICC(icc_data_complete)
+    
+    # ICC計算で実際に使用されたデータの詳細情報
+    cat("ICC計算の詳細情報:\n")
+    cat("  ICC計算に使用されたサンプル数: ", icc_results$n.obs, "\n")
+    cat("  評価者数（時点数）: ", icc_results$n.judge, "\n")
+    if (!is.null(icc_results$missing)) {
+      cat("  ICC計算内で検出された欠損値: ", icc_results$missing, "\n")
+    }
+    cat("\n")
     
     # 結果の表示
     print(icc_results)
@@ -104,6 +147,15 @@ calculate_icc_for_variables <- function(file_path, variables_list) {
   } else {
     cat("\n分析対象の変数がありませんでした。\n")
   }
+  
+  # ログ出力の終了
+  if (!is.null(output_log_file)) {
+    cat("\n==================================================================\n")
+    cat("ICC分析ログ - 終了時刻: ", as.character(Sys.time()), "\n")
+    cat("==================================================================\n")
+    sink()  # ログファイル出力を終了
+    cat("ログファイルに保存しました: ", output_log_file, "\n")
+  }
 }
 
 # ===================================================================
@@ -113,5 +165,6 @@ calculate_icc_for_variables <- function(file_path, variables_list) {
 # 上部で設定したパラメータを使って関数を実行します
 calculate_icc_for_variables(
   file_path = file_path,
-  variables_list = variables_to_analyze
+  variables_list = variables_to_analyze,
+  output_log_file = output_log_file
 )
