@@ -18,8 +18,12 @@ INPUT_FILE <- "raw_data/dummy_data.csv"  # 分析したいCSVファイルのパ�
 TARGET_COLUMNS <- c("542690_00", "542700_00", "542710_00", "542720_00", "542730_00")
 
 # ★★★ モデル・プロファイル数の設定 ★★★
+# モデル1: Equal variances, covariances fixed to 0 (等分散・共分散なし)
+# モデル2: Varying variances, covariances fixed to 0 (異分散・共分散なし)  
+# モデル3: Equal variances, equal covariances (等分散・等共分散)
+# モデル6: Varying variances, varying covariances (異分散・異共分散)
 MODELS_TO_COMPARE <- c(1, 2, 3, 6)  # 比較するモデル番号
-PROFILE_RANGE <- 1:10  # 比較するプロファイル数の範囲
+PROFILE_RANGE <- 1:2  # 比較するプロファイル数の範囲
 
 # ★★★ 出力設定 ★★★
 OUTPUT_FILENAME <- "lpa_model_comparison_results.csv"  # 結果CSVファイル名
@@ -122,14 +126,49 @@ prepare_lpa_data <- function(data, selected_columns) {
 #' @return LPAモデルと適合度指標
 run_single_model_lpa <- function(df_analysis, model_num, profile_range = PROFILE_RANGE) {
   cat(paste("🧮 モデル", model_num, "で", min(profile_range), "から", max(profile_range), "プロファイルのLPAを実行中...\n"))
+  cat(paste("   モデル", model_num, "の設定: "))
   
   tryCatch({
-    lpa_models <- estimate_profiles(
-      df_analysis,
-      n_profiles = profile_range,
-      models = model_num,
-      boot_for_p = TRUE  # BLRT p-valueを計算
-    )
+    # tidyLPAのモデル番号に対応する設定を明示的に指定
+    if (model_num == 1) {
+      # Equal variances, covariances fixed to 0 (class-invariant)
+      cat("Equal variances, covariances fixed to 0\n")
+      lpa_models <- estimate_profiles(
+        df_analysis,
+        n_profiles = profile_range,
+        variances = "equal",
+        covariances = "zero"
+      )
+    } else if (model_num == 2) {
+      # Varying variances, covariances fixed to 0 (class-varying)
+      cat("Varying variances, covariances fixed to 0\n")
+      lpa_models <- estimate_profiles(
+        df_analysis,
+        n_profiles = profile_range,
+        variances = "varying",
+        covariances = "zero"
+      )
+    } else if (model_num == 3) {
+      # Equal variances, equal covariances (class-invariant)
+      cat("Equal variances, equal covariances\n")
+      lpa_models <- estimate_profiles(
+        df_analysis,
+        n_profiles = profile_range,
+        variances = "equal",
+        covariances = "equal"
+      )
+    } else if (model_num == 6) {
+      # Varying variances, varying covariances (class-varying)
+      cat("Varying variances, varying covariances\n")
+      lpa_models <- estimate_profiles(
+        df_analysis,
+        n_profiles = profile_range,
+        variances = "varying",
+        covariances = "varying"
+      )
+    } else {
+      stop(paste("未対応のモデル番号:", model_num))
+    }
     
     cat(paste("✅ モデル", model_num, "のLPA計算完了。\n"))
     return(lpa_models)
