@@ -67,6 +67,16 @@ results_summary <- rbind(results_summary, data.frame(
 # (B) 性別 (sex) の比較: カイ二乗適合度検定
 cat("--- 変数 'sex' の比較 (カイ二乗適合度検定) ---\n")
 observed_sex_counts <- table(my_sample_data$sex)
+observed_sex_proportions <- prop.table(observed_sex_counts)
+
+cat("母集団の男女比:\n")
+cat(paste("  男性 (0):", population_sex_proportions[1], "\n"))
+cat(paste("  女性 (1):", population_sex_proportions[2], "\n"))
+
+cat("サンプルの男女比:\n")
+cat(paste("  男性 (0):", round(observed_sex_proportions[1], 3), "(", observed_sex_counts[1], "人)\n"))
+cat(paste("  女性 (1):", round(observed_sex_proportions[2], 3), "(", observed_sex_counts[2], "人)\n"))
+
 chi_test_sex <- chisq.test(observed_sex_counts, p = population_sex_proportions)
 effect_size_sex <- cohens_w(observed_sex_counts, p = population_sex_proportions)
 
@@ -77,7 +87,7 @@ results_summary <- rbind(results_summary, data.frame(
   variable = "sex",
   test_type = "Chi-squared Goodness-of-Fit",
   population_value = paste(population_sex_proportions, collapse = "/"),
-  sample_mean = NA,
+  sample_mean = paste(round(observed_sex_proportions, 3), collapse = "/"),
   statistic_name = "chi-squared",
   statistic_value = chi_test_sex$statistic,
   p_value = chi_test_sex$p.value,
