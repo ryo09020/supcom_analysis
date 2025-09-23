@@ -8,14 +8,14 @@ library(effectsize)
 # 以下は仮の数値です。
 
 # 1. 日本の平均年齢
-population_mean_age <- 47.2
+population_mean_age <- 48.4
 
 # 2. 日本の男女比 (男性=0, 女性=1 の順で)
 # 例: 男性が38%、女性が62%の場合
 population_sex_proportions <- c(0.487, 0.513) 
 
 # 3. 日本の平均教育年数
-population_mean_education <- 13.4
+population_mean_education <- 12.9
 
 
 # --- サンプルデータの準備 ---
@@ -30,11 +30,14 @@ cat("--- サンプルの代表性の検証 ---\n\n")
 # 最終学歴を教育年数（数値）に変換
 my_sample_data <- my_sample_data %>%
   mutate(years_of_education = case_when(
-    final_education == "高卒"     ~ 12,
-    final_education == "短大卒"   ~ 14,
-    final_education == "大卒"     ~ 16,
-    final_education == "大学院卒" ~ 18,
-    TRUE ~ NA_real_ # それ以外の値はNA（欠損値）にする
+    final_education == 1 ~ 9,
+    final_education == 2 ~ 12,
+    final_education == 3 ~ 14,
+    final_education == 4 ~ 14,
+    final_education == 5 ~ 16,
+    final_education == 6 ~ 18,
+    final_education == 7 ~ NA_real_,
+    TRUE ~ NA_real_
   ))
 cat("--- 最終学歴を教育年数に変換しました ---\n\n")
 
@@ -67,6 +70,13 @@ results_summary <- rbind(results_summary, data.frame(
 # (B) 性別 (sex) の比較: カイ二乗適合度検定
 cat("--- 変数 'sex' の比較 (カイ二乗適合度検定) ---\n")
 observed_sex_counts <- table(my_sample_data$sex)
+
+# サンプルの男女比を計算・表示
+sample_sex_proportions <- prop.table(observed_sex_counts)
+cat("サンプルの男女比:\n")
+cat(paste("  男性 (0):", round(sample_sex_proportions[1] * 100, 1), "%\n"))
+cat(paste("  女性 (1):", round(sample_sex_proportions[2] * 100, 1), "%\n"))
+
 chi_test_sex <- chisq.test(observed_sex_counts, p = population_sex_proportions)
 effect_size_sex <- cohens_w(observed_sex_counts, p = population_sex_proportions)
 

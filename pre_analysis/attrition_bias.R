@@ -11,11 +11,23 @@ t2_data <- read.csv("time2_data.csv")
 # 2. 追跡完了者と脱落者を特定
 # Time1のデータに「status」列を追加して、両者を区別する
 t1_data <- t1_data %>%
-  mutate(status = ifelse(id %in% t2_data$id, "Completer", "Dropout"))
+  mutate(status = ifelse(ID %in% t2_data$ID, "Completer", "Dropout"))
 
 # 3. 学歴コード(final_education)を教育年数（数値）に変換
 # 1:小中学校(9年), 2:高校(12年), 3:専門学校(14年), 4:短大高専(14年), 5:大学(16年), 6:大学院(18年), 7:その他(NA)
 t1_data <- t1_data %>%
+  mutate(years_of_education = case_when(
+    final_education == 1 ~ 9,
+    final_education == 2 ~ 12,
+    final_education == 3 ~ 14,
+    final_education == 4 ~ 14,
+    final_education == 5 ~ 16,
+    final_education == 6 ~ 18,
+    final_education == 7 ~ NA_real_,
+    TRUE ~ NA_real_
+  ))
+
+  t2_data <- t2_data %>%
   mutate(years_of_education = case_when(
     final_education == 1 ~ 9,
     final_education == 2 ~ 12,

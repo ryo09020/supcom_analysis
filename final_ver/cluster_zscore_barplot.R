@@ -1,8 +1,8 @@
 # -------------------------------------------------------------------------
-# クラスター別箱ひげ図（共変量調整済み）
+# クラスター別z-score棒グラフ（共変量調整済み）
 # -------------------------------------------------------------------------
-# このスクリプトは、CSVファイルからクラスター情報を読み取り、
-# 選択した項目について共変量で調整した後の箱ひげ図を作成します。
+# このスクリプトは、共変量調整後にz-score化を行い、
+# クラスター別・項目別の棒グラフを作成します。
 # -------------------------------------------------------------------------
 
 # -------------------------------------------------------------------------
@@ -10,14 +10,13 @@
 # -------------------------------------------------------------------------
 
 # 必要なパッケージをインストール（まだインストールしていない場合）
-# install.packages(c("ggplot2", "dplyr", "tidyr", "viridis", "gridExtra"))
+# install.packages(c("ggplot2", "dplyr", "tidyr", "viridis"))
 
 # パッケージを読み込み
 library(ggplot2)
 library(dplyr)
 library(tidyr)
 library(viridis)
-library(gridExtra)
 
 
 # -------------------------------------------------------------------------
@@ -38,10 +37,10 @@ target_items <- c("X542690_00", "X542700_00", "X542710_00", "X542720_00", "X5427
 covariates <- c("sex", "age", "final_education")
 
 # 図のタイトル
-plot_title <- "Distribution of cluster-specific item values (adjusted for covariates)"
+plot_title <- "Z-score of cluster-specific item values (adjusted for covariates)"
 
-# 出力ファイル名
-output_filename <- "cluster_boxplot_adjusted.png"
+# 出力ファイル名のプレフィックス
+output_prefix <- "cluster_zscore"
 
 
 # -------------------------------------------------------------------------
@@ -137,16 +136,43 @@ cat("共変量調整が完了しました。\n")
 
 
 # -------------------------------------------------------------------------
-# Step 4: データの整形（ggplot用）
+# Step 4: Z-score化
 # -------------------------------------------------------------------------
 
+cat("Z-score化を実行中...\n")
+
+# z-score化されたデータを格納するデータフレーム
+zscore_data <- adjusted_data
+
+# 各ターゲット項目についてz-score化を実行
+for (item in target_items) {
+  cat(paste("項目", item, "をz-score化中...\n"))
+  
+  # z-score化: (値 - 平均) / 標準偏差
+  item_mean <- mean(adjusted_data[[item]], na.rm = TRUE)
+  item_sd <- sd(adjusted_data[[item]], na.rm = TRUE)
+  
+  zscore_data[[item]] <- (adjusted_data[[item]] - item_mean) / item_sd
+  
+  cat(paste("  平均:", round(item_mean, 3), "標準偏差:", round(item_sd, 3), "\n"))
+}
+
+cat("Z-score化が完了しました。\n")
+
+
+# -------------------------------------------------------------------------
+# Step 5: クラスター別・項目別の平均z-scoreを計算
+# -------------------------------------------------------------------------
+
+cat("クラスター別・項目別の統計を計算中...\n")
+
 # ワイド形式からロング形式に変換
-plot_data <- adjusted_data %>%
+plot_data <- zscore_data %>%
   select(all_of(c(cluster_column, target_items))) %>%
   pivot_longer(
     cols = all_of(target_items),
     names_to = "Item",
-    values_to = "Value"
+    values_to = "ZScore"
   ) %>%
   # ファクター順序を設定
   mutate(
@@ -154,85 +180,57 @@ plot_data <- adjusted_data %>%
     Cluster = factor(!!sym(cluster_column))
   )
 
+# クラスター別・項目別の統計を計算
+summary_stats <- plot_data %>%
+  group_by(Cluster, Item) %>%
+  summarise(
+    N = n(),
+    Mean_ZScore = mean(ZScore, na.rm = TRUE),
+    SD_ZScore = sd(ZScore, na.rm = TRUE),
+    SE_ZScore = SD_ZScore / sqrt(N),  # 標準誤差
+    .groups = 'drop'
+  )
+
+# 統計結果を表示
+cat("\n=== クラスター別・項目別のZ-score統計 ===\n")
+print(summary_stats)
+
 
 # -------------------------------------------------------------------------
-# Step 5: 箱ひげ図の作成
+# Step 6: 棒グラフの作成
 # -------------------------------------------------------------------------
 
-cat("Creating boxplots...\n")
+cat("Z-score棒グラフを作成中...\n")
 
-# 基本の箱ひげ図（透明度を削除）
-p1 <- ggplot(plot_data, aes(x = Cluster, y = Value, fill = Cluster)) +
-  geom_boxplot() +
-  geom_jitter(width = 0.2, size = 0.8) +
-  facet_wrap(~ Item, scales = "free_y", ncol = 3) +
-  scale_fill_viridis_d(name = "Cluster") +
+# クラスターごとに分割して項目を横に並べる棒グラフ（cluster_boxplot_adjusted.Rの方式を参考）
+p1 <- ggplot(summary_stats, aes(x = Item, y = Mean_ZScore, fill = Item)) +
+  geom_bar(stat = "identity", alpha = 0.8) +
+  geom_errorbar(aes(ymin = Mean_ZScore - SE_ZScore, ymax = Mean_ZScore + SE_ZScore),
+                width = 0.25) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", alpha = 0.5) +
+  facet_wrap(~ Cluster, nrow = 1) +
+  scale_fill_viridis_d(name = "Item") +
   labs(
     title = plot_title,
-    subtitle = paste("Covariate adjustment:", paste(covariates, collapse = ", ")),
-    x = "Cluster",
-    y = "Adjusted Value"
+    subtitle = paste("Error bars: Standard Error, Covariate adjustment:", paste(covariates, collapse = ", ")),
+    x = "Items",
+    y = "Mean Z-score"
   ) +
   theme_minimal() +
   theme(
     plot.title = element_text(size = 14, hjust = 0.5),
     plot.subtitle = element_text(size = 10, hjust = 0.5),
-    axis.text.x = element_text(angle = 0),
-    strip.text = element_text(size = 10),
-    legend.position = "bottom"
-  )
-
-# 統計情報を含む箱ひげ図（透明度を削除）
-p2 <- ggplot(plot_data, aes(x = Cluster, y = Value, fill = Cluster)) +
-  geom_boxplot() +
-  stat_summary(fun = mean, geom = "point", shape = 23, size = 3, 
-               fill = "white", color = "black") +
-  facet_wrap(~ Item, scales = "free_y", ncol = 3) +
-  scale_fill_viridis_d(name = "Cluster") +
-  labs(
-    title = paste(plot_title, "(with mean)"),
-    subtitle = paste("◇: Mean value, Covariate adjustment:", paste(covariates, collapse = ", ")),
-    x = "Cluster",
-    y = "Adjusted Value"
-  ) +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(size = 14, hjust = 0.5),
-    plot.subtitle = element_text(size = 10, hjust = 0.5),
-    axis.text.x = element_text(angle = 0),
-    strip.text = element_text(size = 10),
-    legend.position = "bottom"
-  )
-
-# バイオリンプロット
-p3 <- ggplot(plot_data, aes(x = Cluster, y = Value, fill = Cluster)) +
-  geom_violin() +
-  geom_boxplot(width = 0.1, fill = "white") +
-  stat_summary(fun = mean, geom = "point", shape = 23, size = 2, 
-               fill = "red", color = "black") +
-  facet_wrap(~ Item, scales = "free_y", ncol = 3) +
-  scale_fill_viridis_d(name = "Cluster") +
-  labs(
-    title = paste(plot_title, "(violin plot)"),
-    subtitle = paste("◇: Mean value, Covariate adjustment:", paste(covariates, collapse = ", ")),
-    x = "Cluster",
-    y = "Adjusted Value"
-  ) +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(size = 14, hjust = 0.5),
-    plot.subtitle = element_text(size = 10, hjust = 0.5),
-    axis.text.x = element_text(angle = 0),
-    strip.text = element_text(size = 10),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    strip.text = element_text(size = 12),
     legend.position = "bottom"
   )
 
 
 # -------------------------------------------------------------------------
-# Step 6: 統計的検定とサマリー
+# Step 7: 統計的検定
 # -------------------------------------------------------------------------
 
-cat("\n=== 統計的検定結果 ===\n")
+cat("\n=== 統計的検定結果（Z-score） ===\n")
 
 # 各項目について分散分析を実行
 anova_results <- list()
@@ -244,7 +242,7 @@ for (item in target_items) {
   item_data <- plot_data %>% filter(Item == item)
   
   # 分散分析
-  anova_model <- aov(Value ~ Cluster, data = item_data)
+  anova_model <- aov(ZScore ~ Cluster, data = item_data)
   anova_summary <- summary(anova_model)
   
   # 結果を保存
@@ -259,33 +257,22 @@ for (item in target_items) {
   } else {
     cat("→ No significant difference between clusters (p >= 0.05)\n")
   }
-  
-  # 各クラスターの記述統計
-  descriptive_stats <- item_data %>%
-    group_by(Cluster) %>%
-    summarise(
-      N = n(),
-      Mean = round(mean(Value, na.rm = TRUE), 3),
-      SD = round(sd(Value, na.rm = TRUE), 3),
-      Median = round(median(Value, na.rm = TRUE), 3),
-      .groups = 'drop'
-    )
-  
-  print(descriptive_stats)
 }
 
 
 # -------------------------------------------------------------------------
-# Step 7: 図の保存（個別保存）
+# Step 8: 図の保存
 # -------------------------------------------------------------------------
 
-# ファイルサイズを項目数に応じて調整
-width_size <- max(12, length(target_items) * 2)
-height_size <- max(10, ceiling(length(target_items) / 3) * 4)
+# ファイルサイズを調整（クラスター数と項目数に応じて）
+width_size <- max(12, length(target_items) * n_clusters * 0.8)
+height_size <- 8
 
-cat(paste("\nSaving boxplot with scatter points as: boxplot_scatter.png\n"))
+cat("\nZ-score棒グラフを保存中...\n")
+
+# 全データを一つの棒グラフとして保存
 ggsave(
-  filename = "boxplot_scatter.png",
+  filename = paste0(output_prefix, "_all_clusters.png"),
   plot = p1,
   width = width_size,
   height = height_size,
@@ -293,86 +280,34 @@ ggsave(
   dpi = 300,
   bg = "white"
 )
-cat("Saved boxplot_scatter.png\n")
-
-cat(paste("Saving boxplot with mean as: boxplot_mean.png\n"))
-ggsave(
-  filename = "boxplot_mean.png",
-  plot = p2,
-  width = width_size,
-  height = height_size,
-  units = "in",
-  dpi = 300,
-  bg = "white"
-)
-cat("Saved boxplot_mean.png\n")
-
-cat(paste("Saving violin plot as: violin_plot.png\n"))
-ggsave(
-  filename = "violin_plot.png",
-  plot = p3,
-  width = width_size,
-  height = height_size,
-  units = "in",
-  dpi = 300,
-  bg = "white"
-)
-cat("Saved violin_plot.png\n")
-
-# -------------------------------------------------------------------------
-# Step 8: クラスターごと・項目ごとの棒グラフ作成
-# -------------------------------------------------------------------------
-cat("\nCreating barplot of mean values for each item by cluster...\n")
-bar_data <- plot_data %>%
-  group_by(Cluster, Item) %>%
-  summarise(
-    Mean = mean(Value, na.rm = TRUE),
-    .groups = 'drop'
-  )
-
-barplot <- ggplot(bar_data, aes(x = Item, y = Mean, fill = Item)) +
-  geom_bar(stat = "identity", position = "dodge") +
-  facet_wrap(~ Cluster, nrow = 1) +
-  scale_fill_viridis_d(name = "Item") +
-  labs(
-    title = "Mean value of each item by cluster",
-    x = "Item",
-    y = "Mean (Adjusted Value)"
-  ) +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(size = 14, hjust = 0.5),
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    strip.text = element_text(size = 12),
-    legend.position = "bottom"
-  )
-
-barplot_filename <- "cluster_barplot.png"
-ggsave(
-  filename = barplot_filename,
-  plot = barplot,
-  width = max(12, n_clusters * 4),
-  height = 6,
-  units = "in",
-  dpi = 300,
-  bg = "white"
-)
-cat(paste("Barplot saved as", barplot_filename, "\n"))
+cat(paste("Saved", paste0(output_prefix, "_all_clusters.png"), "\n"))
 
 
 # -------------------------------------------------------------------------
-# Step 9: データの出力（オプション）
+# Step 9: 結果の要約をCSVとして保存
 # -------------------------------------------------------------------------
 
-# 調整済みデータをCSVとして保存（オプション）
-# adjusted_data_filename <- "adjusted_data.csv"
-# write.csv(adjusted_data, adjusted_data_filename, row.names = FALSE)
-# cat(paste("調整済みデータが", adjusted_data_filename, "として保存されました。\n"))
+# 統計結果をCSVとして保存
+summary_filename <- paste0(output_prefix, "_summary.csv")
+write.csv(summary_stats, summary_filename, row.names = FALSE)
+cat(paste("統計要約を", summary_filename, "として保存しました。\n"))
+
+# z-score化されたデータも保存（オプション）
+zscore_filename <- paste0(output_prefix, "_data.csv")
+write.csv(zscore_data, zscore_filename, row.names = FALSE)
+cat(paste("Z-score化されたデータを", zscore_filename, "として保存しました。\n"))
+
+
+# -------------------------------------------------------------------------
+# Step 10: 実行完了メッセージ
+# -------------------------------------------------------------------------
 
 cat("\n=== スクリプト実行完了 ===\n")
 cat("作成された図:\n")
-cat("1. 散布点付き箱ひげ図 (boxplot_scatter.png)\n")
-cat("2. 平均値付き箱ひげ図 (boxplot_mean.png)\n")
-cat("3. バイオリンプロット (violin_plot.png)\n")
-cat("4. クラスター別棒グラフ (cluster_barplot.png)\n")
-cat("共変量調整により、指定した変数の影響を除去した値で比較しています。\n")
+cat(paste("1. 全クラスター統合棒グラフ (", paste0(output_prefix, "_all_clusters.png"), ")\n", sep=""))
+cat("\n保存されたデータ:\n")
+cat(paste("1. 統計要約 (", summary_filename, ")\n", sep=""))
+cat(paste("2. Z-score化データ (", zscore_filename, ")\n", sep=""))
+cat("\n共変量調整とZ-score化により、標準化された比較が可能になりました。\n")
+cat("Z-score = 0が全体平均を表し、正の値は平均より高く、負の値は平均より低いことを示します。\n")
+cat("全てのクラスターと項目が一つのグラフに統合されています。\n")
