@@ -30,20 +30,31 @@ names(full_data)
 # ▼ ユーザーが設定する項目 ▼
 # 分析したい全項目の列名を指定してください
 # (お手元のデータに合わせて正確な列名に書き換えてください)
-all_target_columns <- c("Item_001","Item_002","Item_003","Item_004","Item_005","Item_006","Item_007","Item_008","Item_009","Item_010","Item_011","Item_012","Item_013","Item_014","Item_015","Item_016","Item_017","Item_018","Item_019","Item_020","Item_021","Item_022","Item_023","Item_024","Item_025","Item_026","Item_027","Item_028","Item_029","Item_030","Item_031","Item_032","Item_033","Item_034","Item_035","Item_036","Item_037","Item_038","Item_039","Item_040","Item_041","Item_042","Item_043")
+all_target_columns <- c("Item_001","Item_002","Item_003","Item_004","Item_005","Item_006","Item_007","Item_008","Item_009","Item_010","Item_011","Item_012","Item_013","Item_014","Item_015","Item_016","Item_017","Item_018","Item_019","Item_020","Item_021","Item_022","Item_023","Item_024","Item_025","Item_026","Item_027","Item_028","Item_029","Item_030","Item_031","Item_032","Item_033","Item_034","Item_035","Item_036","Item_037","Item_038","Item_039","Item_040","Item_041","Item_042","Item_043","final_education")
 
 # ▼ 図表で表示する項目名を設定してください ▼
 # 各項目の表示用ラベル（英語推奨）
-all_item_labels <- c("Item_001","Item_002","Item_003","Item_004","Item_005","Item_006","Item_007","Item_008","Item_009","Item_010","Item_011","Item_012","Item_013","Item_014","Item_015","Item_016","Item_017","Item_018","Item_019","Item_020","Item_021","Item_022","Item_023","Item_024","Item_025","Item_026","Item_027","Item_028","Item_029","Item_030","Item_031","Item_032","Item_033","Item_034","Item_035","Item_036","Item_037","Item_038","Item_039","Item_040","Item_041","Item_042","Item_043")
+all_item_labels <- c("Item_001","Item_002","Item_003","Item_004","Item_005","Item_006","Item_007","Item_008","Item_009","Item_010","Item_011","Item_012","Item_013","Item_014","Item_015","Item_016","Item_017","Item_018","Item_019","Item_020","Item_021","Item_022","Item_023","Item_024","Item_025","Item_026","Item_027","Item_028","Item_029","Item_030","Item_031","Item_032","Item_033","Item_034","Item_035","Item_036","Item_037","Item_038","Item_039","Item_040","Item_041","Item_042","Item_043","Education_Years")
 
 # データの読み込みと前処理
 cat("... データを前処理中\n")
 
-# 分析対象の列を抽出
+# 分析対象の列を抽出し、final_educationの変換処理を実行
 analysis_data <- full_data %>%
   select(all_of(all_target_columns)) %>%
   mutate(across(everything(), as.numeric)) %>%  # 数値に変換（変換できないものはNAになる）
-  na.omit()  # 欠損値（数値に変換できなかったものを含む）を含む行を除外
+  # final_educationを教育年数に変換
+  mutate(final_education = case_when(
+    final_education == 1 ~ 9,
+    final_education == 2 ~ 12,
+    final_education == 3 ~ 14,
+    final_education == 4 ~ 14,
+    final_education == 5 ~ 16,
+    final_education == 6 ~ 18,
+    final_education == 7 ~ NA_real_,
+    TRUE ~ NA_real_
+  )) %>%
+  na.omit()  # 欠損値（数値に変換できなかったもの・変換後のNAを含む）を含む行を除外
 
 # データの確認
 cat(paste("元のデータ行数:", nrow(full_data), "\n"))
