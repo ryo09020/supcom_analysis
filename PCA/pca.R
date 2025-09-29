@@ -42,29 +42,13 @@ SHOW_LOADINGS_THRESHOLD <- 0.3  # 因子負荷量の表示閾値
 # 1. パッケージ管理とセットアップ
 # ---------------------------------------------------------------
 
-#' パッケージの準備と読み込み
+#' パッケージの読み込み（スーパーコンピューター用）
 setup_packages <- function() {
   packages <- c("tidyverse", "psych", "corrplot", "factoextra", "FactoMineR", 
                 "pheatmap", "ggplot2", "gridExtra", "RColorBrewer")
   
-  # CRANミラーを設定
-  if (is.null(getOption("repos")) || getOption("repos")["CRAN"] == "@CRAN@") {
-    options(repos = c(CRAN = "https://cran.rstudio.com/"))
-  }
-  
-  # パッケージのインストール確認
-  missing_packages <- packages[!(packages %in% installed.packages()[,"Package"])]
-  if(length(missing_packages) > 0) {
-    cat("以下のパッケージをインストールします:", paste(missing_packages, collapse = ", "), "\n")
-    tryCatch({
-      install.packages(missing_packages, dependencies = TRUE, repos = "https://cran.rstudio.com/")
-    }, error = function(e) {
-      cat("❌ パッケージインストールエラー:", e$message, "\n")
-      cat("💡 手動でパッケージをインストールしてください:\n")
-      cat(paste("install.packages(c(", paste0("'", missing_packages, "'", collapse = ", "), "))\n"))
-      stop("パッケージのインストールに失敗しました。")
-    })
-  }
+  cat("📦 必要なパッケージを読み込み中...\n")
+  cat("必要パッケージ:", paste(packages, collapse = ", "), "\n\n")
   
   # パッケージの読み込み（警告を抑制）
   tryCatch({
@@ -76,6 +60,9 @@ setup_packages <- function() {
     cat("✅ パッケージの読み込みが完了しました。\n\n")
   }, error = function(e) {
     cat("❌ パッケージ読み込みエラー:", e$message, "\n")
+    cat("💡 以下のパッケージが必要です（事前にインストールしてください）:\n")
+    cat(paste(" -", packages, collapse = "\n"))
+    cat("\n")
     stop("必要なパッケージが読み込めませんでした。")
   })
 }
