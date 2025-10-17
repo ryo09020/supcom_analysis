@@ -1,218 +1,276 @@
 #!/usr/bin/env Rscript
 
-# Generalized Additive Model (GAM) plotting utility
-# -----------------------------------------------
-# 1. Update the CONFIG list below with your dataset and options.
-# 2. Run this script (e.g., Rscript PCA/gan.R) to generate:
-#    - A scatter plot with an overlaid GAM smooth
-#    - A plot showing the smooth effect s(x) with confidence interval
-#    - (Optional) A text summary of the GAM fit
+#################################################################
+# GAM 可視化スクリプト
+# 年齢などの説明変数と特性スコアの非線形な関係を可視化
+#################################################################
 
-# ==== Configuration ==========================================================
-CONFIG <- list(
-	data_path = "sample_gam.csv",
-	x_col = "age",
-	y_col = "extraversion",
-	output_dir = "outputs",
-	output_prefix = NULL,          # NULL -> derived automatically from the data file name
-	smooth_k = 10L,                # Basis dimension for s(x)
-	family = gaussian(),           # Can also be character string, e.g. "gaussian"
-	scatter_alpha = 0.6,           # Point transparency (0-1)
-	plot_width = 7,
-	plot_height = 5,
-	predict_points = 200L,         # Number of points used to draw the smooth effect curve
-	ci_multiplier = 2,             # Width of the confidence band (± multiplier * SE)
-	save_summary = TRUE            # Write GAM summary text file
-)
+# ================================================================
+# 設定変数
+# ================================================================
 
-# Optional: override configuration without editing the file by defining
-# CONFIG_OVERRIDE <- list(...) *before* sourcing / running this script.
-if (exists("CONFIG_OVERRIDE", inherits = FALSE)) {
-	CONFIG <- utils::modifyList(CONFIG, CONFIG_OVERRIDE)
-}
+INPUT_FILE <- "sample_gam.csv"
+X_COLUMN <- "age"
+Y_COLUMN <- "extraversion"
+OUTPUT_DIR <- "outputs"
+OUTPUT_PREFIX <- NULL            # NULL の場合は入力ファイル名から自動生成
 
-# ==== Dependencies ===========================================================
-suppressPackageStartupMessages({
-	required_packages <- c("readr", "dplyr", "ggplot2", "mgcv")
-	missing_packages <- required_packages[!vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)]
-	if (length(missing_packages) > 0) {
-		stop(
-			sprintf(
-				"Missing packages: %s. Please install them, e.g. install.packages(c(%s)).",
-				paste(missing_packages, collapse = ", "),
-				paste(sprintf('\"%s\"', missing_packages), collapse = ", ")
-			),
-			call. = FALSE
-		)
-	}
+SMOOTH_K <- 10L
+GAM_FAMILY <- gaussian()         # 文字列 ("gaussian") や family オブジェクトでも可
+SCATTER_ALPHA <- 0.6
+PLOT_WIDTH <- 7
+PLOT_HEIGHT <- 5
+PLOT_DPI <- 300
+PREDICT_POINTS <- 200L
+CI_MULTIPLIER <- 2
+SAVE_SUMMARY <- TRUE
 
-	lapply(required_packages, library, character.only = TRUE)
+# ================================================================
+# パッケージ読み込み
+# ================================================================
+
+suppressMessages({
+  suppressWarnings({
+    library(readr)
+    library(dplyr)
+    library(ggplot2)
+    library(mgcv)
+    library(rlang)
+  })
 })
 
-cfg <- CONFIG
+# ================================================================
+# ユーティリティ関数
+# ================================================================
 
-if (!is.character(cfg$data_path) || length(cfg$data_path) != 1 || cfg$data_path == "") {
-	stop("CONFIG$data_path must be a non-empty string.", call. = FALSE)
+validate_settings <- function() {
+  if (!is.character(INPUT_FILE) || length(INPUT_FILE) != 1 || INPUT_FILE == "") {
+    stop("INPUT_FILE は非空文字列で指定してください。")
+  }
+  if (!is.character(X_COLUMN) || length(X_COLUMN) != 1 || X_COLUMN == "") {
+    stop("X_COLUMN は非空文字列で指定してください。")
+  }
+  if (!is.character(Y_COLUMN) || length(Y_COLUMN) != 1 || Y_COLUMN == "") {
+    stop("Y_COLUMN は非空文字列で指定してください。")
+  }
+  if (!is.numeric(SMOOTH_K) || length(SMOOTH_K) != 1 || SMOOTH_K < 3) {
+    stop("SMOOTH_K は 3 以上の数値で指定してください。")
+  }
+  if (!is.numeric(PREDICT_POINTS) || length(PREDICT_POINTS) != 1 || PREDICT_POINTS < 10) {
+    stop("PREDICT_POINTS は 10 以上の数値で指定してください。")
+  }
+  if (!is.numeric(CI_MULTIPLIER) || length(CI_MULTIPLIER) != 1 || CI_MULTIPLIER <= 0) {
+    stop("CI_MULTIPLIER は 0 より大きい数値で指定してください。")
+  }
 }
 
-if (!file.exists(cfg$data_path)) {
-	stop(sprintf("Data file not found: %s", cfg$data_path), call. = FALSE)
+resolve_family <- function() {
+  if (inherits(GAM_FAMILY, "family")) {
+    return(GAM_FAMILY)
+  }
+  if (is.function(GAM_FAMILY)) {
+    fam <- GAM_FAMILY()
+    if (!inherits(fam, "family")) {
+      stop("GAM_FAMILY で指定した関数が family オブジェクトを返しません。")
+    }
+    return(fam)
+  }
+  if (is.character(GAM_FAMILY)) {
+    fam_fun <- tryCatch(match.fun(GAM_FAMILY), error = function(e) NULL)
+    if (is.null(fam_fun)) {
+      stop("指定された family 関数が見つかりません: ", GAM_FAMILY)
+    }
+    fam <- fam_fun()
+    if (!inherits(fam, "family")) {
+      stop("GAM_FAMILY で指定した文字列が family オブジェクトを返しません: ", GAM_FAMILY)
+    }
+    return(fam)
+  }
+  stop("GAM_FAMILY は family オブジェクト、文字列、または family を返す関数で指定してください。")
 }
 
-cfg$data_path <- normalizePath(cfg$data_path)
-
-if (!dir.exists(cfg$output_dir)) {
-	dir.create(cfg$output_dir, recursive = TRUE, showWarnings = FALSE)
+resolve_output_prefix <- function() {
+  if (is.null(OUTPUT_PREFIX) || OUTPUT_PREFIX == "") {
+    tools::file_path_sans_ext(basename(INPUT_FILE))
+  } else {
+    OUTPUT_PREFIX
+  }
 }
 
-if (is.null(cfg$output_prefix) || cfg$output_prefix == "") {
-	cfg$output_prefix <- tools::file_path_sans_ext(basename(cfg$data_path))
+ensure_output_dir <- function() {
+  if (!dir.exists(OUTPUT_DIR)) {
+    dir.create(OUTPUT_DIR, recursive = TRUE, showWarnings = FALSE)
+  }
 }
 
-if (!is.numeric(cfg$predict_points) || length(cfg$predict_points) != 1 || cfg$predict_points < 10) {
-	stop("CONFIG$predict_points should be a single integer >= 10.", call. = FALSE)
+load_data <- function() {
+  if (!file.exists(INPUT_FILE)) {
+    stop("指定されたファイルが見つかりません: ", INPUT_FILE)
+  }
+  cat("データ読み込み中:", basename(INPUT_FILE), "\n")
+  data <- readr::read_csv(INPUT_FILE, show_col_types = FALSE)
+  cat("データサイズ:", nrow(data), "行", ncol(data), "列\n")
+  data
 }
 
-if (!is.numeric(cfg$ci_multiplier) || length(cfg$ci_multiplier) != 1 || cfg$ci_multiplier <= 0) {
-	stop("CONFIG$ci_multiplier should be a positive number.", call. = FALSE)
+prepare_data <- function(data) {
+  missing_cols <- setdiff(c(X_COLUMN, Y_COLUMN), colnames(data))
+  if (length(missing_cols) > 0) {
+    stop("指定された列がデータ内に見つかりません: ", paste(missing_cols, collapse = ", "))
+  }
+
+  df <- data |>
+    dplyr::select(dplyr::all_of(c(X_COLUMN, Y_COLUMN))) |>
+    dplyr::mutate(dplyr::across(dplyr::everything(), as.numeric))
+
+  df <- df[stats::complete.cases(df), , drop = FALSE]
+
+  cat("分析対象:", nrow(df), "件\n")
+  if (nrow(df) < 10) {
+    warning("有効なレコードが 10 件未満です。GAM の推定結果が不安定になる可能性があります。")
+  }
+
+  df
 }
 
-message("Reading data from ", cfg$data_path)
-data <- readr::read_csv(cfg$data_path, show_col_types = FALSE)
-
-if (!cfg$x_col %in% names(data)) {
-	stop(sprintf("Column '%s' not found in the dataset.", cfg$x_col), call. = FALSE)
-}
-if (!cfg$y_col %in% names(data)) {
-	stop(sprintf("Column '%s' not found in the dataset.", cfg$y_col), call. = FALSE)
-}
-
-selected <- data |>
-	dplyr::select(dplyr::all_of(c(cfg$x_col, cfg$y_col)))
-
-selected <- selected[stats::complete.cases(selected), , drop = FALSE]
-
-if (nrow(selected) < 10) {
-	warning("Fewer than 10 complete observations after removing NAs. GAM fit may be unreliable.")
+fit_gam_model <- function(clean_data) {
+  family_obj <- resolve_family()
+  formula_text <- sprintf("%s ~ s(%s, k = %d)", Y_COLUMN, X_COLUMN, SMOOTH_K)
+  cat("GAM 当てはめ中:", formula_text, "\n")
+  mgcv::gam(
+    formula = stats::as.formula(formula_text),
+    data = clean_data,
+    family = family_obj,
+    method = "REML"
+  )
 }
 
-message(sprintf("Fitting GAM: %s ~ s(%s, k = %d)", cfg$y_col, cfg$x_col, cfg$smooth_k))
-formula_text <- sprintf("%s ~ s(%s, k = %d)", cfg$y_col, cfg$x_col, cfg$smooth_k)
-
-family_obj <- if (is.character(cfg$family)) {
-	fam_fun <- tryCatch(match.fun(cfg$family), error = function(e) NULL)
-	if (is.null(fam_fun)) {
-		stop(sprintf("Could not find family function named '%s'.", cfg$family), call. = FALSE)
-	}
-	fam <- fam_fun()
-	if (!inherits(fam, "family")) {
-		stop(sprintf("Function '%s' did not return a valid family object.", cfg$family), call. = FALSE)
-	}
-	fam
-} else if (inherits(cfg$family, "family")) {
-	cfg$family
-} else {
-	stop("CONFIG$family must be a family object or the name of a family function.", call. = FALSE)
+create_scatter_plot <- function(clean_data) {
+  ggplot2::ggplot(
+    clean_data,
+    ggplot2::aes(x = .data[[X_COLUMN]], y = .data[[Y_COLUMN]])
+  ) +
+    ggplot2::geom_point(alpha = SCATTER_ALPHA, color = "#3182bd") +
+    ggplot2::geom_smooth(
+      method = "gam",
+      formula = stats::as.formula(paste("y ~ s(x, k =", SMOOTH_K, ")")),
+      se = TRUE,
+      color = "#08519c",
+      fill = "#bdd7e7"
+    ) +
+    ggplot2::labs(
+      title = sprintf("Scatter: %s vs %s", Y_COLUMN, X_COLUMN),
+      x = X_COLUMN,
+      y = Y_COLUMN
+    ) +
+    ggplot2::theme_minimal(base_size = 13) +
+    ggplot2::theme(plot.title = ggplot2::element_text(face = "bold"))
 }
 
-gam_model <- mgcv::gam(
-	formula = stats::as.formula(formula_text),
-	data = selected,
-	family = family_obj,
-	method = "REML"
-)
+create_effect_plot <- function(gam_model, clean_data) {
+  x_seq <- seq(
+    from = min(clean_data[[X_COLUMN]], na.rm = TRUE),
+    to = max(clean_data[[X_COLUMN]], na.rm = TRUE),
+    length.out = PREDICT_POINTS
+  )
 
-# Step 1: Scatter plot with optional GAM smoother overlay
-scatter_plot <- ggplot2::ggplot(
- selected,
- ggplot2::aes(x = .data[[cfg$x_col]], y = .data[[cfg$y_col]])
-) +
- ggplot2::geom_point(alpha = cfg$scatter_alpha, color = "#3182bd") +
-	ggplot2::labs(
-		title = sprintf("Scatter: %s vs %s", cfg$y_col, cfg$x_col),
-		x = cfg$x_col,
-		y = cfg$y_col
-	) +
-	ggplot2::theme_minimal(base_size = 13) +
-	ggplot2::theme(plot.title = ggplot2::element_text(face = "bold")) +
-	ggplot2::geom_smooth(
-		method = "gam",
-		formula = stats::as.formula(paste("y ~ s(x, k =", cfg$smooth_k, ")")),
-		se = TRUE,
-		color = "#08519c",
-		fill = "#bdd7e7"
-	)
+  newdata <- stats::setNames(data.frame(x_seq), X_COLUMN)
+  pred_terms <- predict(gam_model, newdata = newdata, type = "terms", se.fit = TRUE)
 
-scatter_path <- file.path(cfg$output_dir, sprintf("%s_scatter.png", cfg$output_prefix))
-ggplot2::ggsave(scatter_path, scatter_plot, width = cfg$plot_width, height = cfg$plot_height)
-message("Saved scatter plot to ", scatter_path)
+  term_names <- colnames(pred_terms$fit)
+  smooth_term <- grep(sprintf("^s\\(%s\\)$", X_COLUMN), term_names, value = TRUE)
+  if (length(smooth_term) == 0) {
+    smooth_term <- term_names[1]
+    warning("対応する平滑項が見つからなかったため、最初の項を使用します。")
+  }
 
-# Step 2: Smooth effect plot (centered partial effect of the smooth term)
-x_values <- seq(
-	from = min(selected[[cfg$x_col]], na.rm = TRUE),
-	to = max(selected[[cfg$x_col]], na.rm = TRUE),
-	length.out = cfg$predict_points
-)
+  effect <- pred_terms$fit[, smooth_term]
+  se_effect <- pred_terms$se.fit[, smooth_term]
 
-newdata <- stats::setNames(data.frame(x_values), cfg$x_col)
+  effect_df <- data.frame(
+    x = x_seq,
+    effect = effect,
+    lower = effect - CI_MULTIPLIER * se_effect,
+    upper = effect + CI_MULTIPLIER * se_effect
+  )
+  names(effect_df)[names(effect_df) == "x"] <- X_COLUMN
 
-pred_terms <- predict(gam_model, newdata = newdata, type = "terms", se.fit = TRUE)
-
-term_names <- colnames(pred_terms$fit)
-smooth_term <- grep(sprintf("^s\\(%s\\)$", cfg$x_col), term_names, value = TRUE)
-if (length(smooth_term) == 0) {
-	smooth_term <- term_names[1]
-	warning("Could not match smooth term name explicitly; using the first available term.")
+  ggplot2::ggplot(
+    effect_df,
+    ggplot2::aes(x = .data[[X_COLUMN]], y = .data[["effect"]])
+  ) +
+    ggplot2::geom_ribbon(
+      ggplot2::aes(ymin = .data[["lower"]], ymax = .data[["upper"]]),
+      fill = "#c6dbef",
+      alpha = 0.6
+    ) +
+    ggplot2::geom_line(color = "#08306b", linewidth = 1) +
+    ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "#636363") +
+    ggplot2::labs(
+      title = sprintf("GAM smooth effect: s(%s)", X_COLUMN),
+      x = X_COLUMN,
+      y = sprintf("Effect on %s", Y_COLUMN),
+      caption = sprintf("Shaded area: ±%s × standard error", CI_MULTIPLIER)
+    ) +
+    ggplot2::theme_minimal(base_size = 13) +
+    ggplot2::theme(plot.title = ggplot2::element_text(face = "bold"))
 }
 
-effect <- pred_terms$fit[, smooth_term]
-se_effect <- pred_terms$se.fit[, smooth_term]
-
-effect_df <- data.frame(
-	value = x_values,
-	effect = effect,
-	lower = effect - cfg$ci_multiplier * se_effect,
-	upper = effect + cfg$ci_multiplier * se_effect
-)
-names(effect_df)[names(effect_df) == "value"] <- cfg$x_col
-
-effect_plot <- ggplot2::ggplot(
- effect_df,
- ggplot2::aes(x = .data[[cfg$x_col]], y = .data[["effect"]])
-) +
- ggplot2::geom_ribbon(
-	 ggplot2::aes(ymin = .data[["lower"]], ymax = .data[["upper"]]),
-	 fill = "#c6dbef",
-	 alpha = 0.6
- ) +
-	ggplot2::geom_line(color = "#08306b", linewidth = 1) +
-	ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "#636363") +
-	ggplot2::labs(
-		title = sprintf("GAM smooth effect: s(%s)", cfg$x_col),
-		x = cfg$x_col,
-		y = sprintf("Effect on %s", cfg$y_col),
-		caption = sprintf("Shaded area: ±%s × standard error", cfg$ci_multiplier)
-	) +
-	ggplot2::theme_minimal(base_size = 13) +
-	ggplot2::theme(plot.title = ggplot2::element_text(face = "bold"))
-
-effect_path <- file.path(cfg$output_dir, sprintf("%s_gam_effect.png", cfg$output_prefix))
-ggplot2::ggsave(effect_path, effect_plot, width = cfg$plot_width, height = cfg$plot_height)
-message("Saved GAM effect plot to ", effect_path)
-
-if (isTRUE(cfg$save_summary)) {
-	summary_path <- file.path(cfg$output_dir, sprintf("%s_gam_summary.txt", cfg$output_prefix))
-	capture.output(
-		{
-			cat("GAM formula:\n")
-			print(formula(gam_model))
-			cat("\n")
-			print(summary(gam_model))
-		},
-		file = summary_path
-	)
-	message("Saved GAM summary to ", summary_path)
+save_plot <- function(plot, filename) {
+  filepath <- file.path(OUTPUT_DIR, filename)
+  cat("プロット保存中:", filepath, "\n")
+  ggplot2::ggsave(filepath, plot = plot, width = PLOT_WIDTH, height = PLOT_HEIGHT, dpi = PLOT_DPI)
 }
 
-message("Done.")
+save_gam_summary <- function(gam_model, prefix) {
+  summary_path <- file.path(OUTPUT_DIR, sprintf("%s_gam_summary.txt", prefix))
+  cat("GAM サマリー保存中:", summary_path, "\n")
+  capture.output(
+    {
+      cat("GAM formula:\n")
+      print(formula(gam_model))
+      cat("\n")
+      print(summary(gam_model))
+    },
+    file = summary_path
+  )
+}
+
+# ================================================================
+# メイン処理
+# ================================================================
+
+main <- function() {
+  cat("=== GAM 可視化スクリプト ===\n")
+  validate_settings()
+  ensure_output_dir()
+
+  data <- load_data()
+  clean_data <- prepare_data(data)
+
+  gam_model <- fit_gam_model(clean_data)
+
+  cat("\n--- 可視化・保存 ---\n")
+  prefix <- resolve_output_prefix()
+  scatter_plot <- create_scatter_plot(clean_data)
+  save_plot(scatter_plot, sprintf("%s_scatter.png", prefix))
+
+  effect_plot <- create_effect_plot(gam_model, clean_data)
+  save_plot(effect_plot, sprintf("%s_gam_effect.png", prefix))
+
+  if (isTRUE(SAVE_SUMMARY)) {
+    save_gam_summary(gam_model, prefix)
+  }
+
+  cat("\n=== 処理完了 ===\n")
+  cat(
+    "設定: smooth k =", SMOOTH_K,
+    ", family =",
+    if (is.character(GAM_FAMILY)) GAM_FAMILY else class(resolve_family())[1],
+    "\n"
+  )
+}
+
+# 実行
+main()
 
