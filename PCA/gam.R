@@ -9,9 +9,9 @@
 # 設定変数
 # ================================================================
 
-INPUT_FILE <- "sample_gam.csv"
-X_COLUMN <- "age"
-Y_COLUMN <- "extraversion"
+INPUT_FILE <- "sample_gam_nonstandard.csv"
+X_COLUMN <- "score_total"
+Y_COLUMN <- "542640_00"
 OUTPUT_DIR <- "outputs"
 OUTPUT_PREFIX <- NULL            # NULL の場合は入力ファイル名から自動生成
 
@@ -62,6 +62,21 @@ validate_settings <- function() {
   if (!is.numeric(CI_MULTIPLIER) || length(CI_MULTIPLIER) != 1 || CI_MULTIPLIER <= 0) {
     stop("CI_MULTIPLIER は 0 より大きい数値で指定してください。")
   }
+}
+
+quote_for_formula <- function(name) {
+  if (!is.character(name) || length(name) != 1 || name == "") {
+    stop("無効な列名が指定されました。")
+  }
+
+  needs_quote <- make.names(name) != name || grepl("^[0-9]", name) || grepl("[^[:alnum:]_.]", name)
+
+  if (!needs_quote) {
+    return(name)
+  }
+
+  escaped <- gsub("`", "``", name, fixed = TRUE)
+  sprintf("`%s`", escaped)
 }
 
 resolve_family <- function() {
@@ -130,25 +145,33 @@ prepare_data <- function(data) {
     warning("有効なレコードが 10 件未満です。GAM の推定結果が不安定になる可能性があります。")
   }
 
-  df
+  safe_names <- make.names(c(X_COLUMN, Y_COLUMN), unique = TRUE)
+  colnames(df) <- safe_names
+
+  list(
+    data = df,
+    safe_x = safe_names[1],
+    safe_y = safe_names[2]
+  )
 }
 
-fit_gam_model <- function(clean_data) {
-  family_obj <- resolve_family()
-  formula_text <- sprintf("%s ~ s(%s, k = %d)", Y_COLUMN, X_COLUMN, SMOOTH_K)
+fit_gam_model <- function(prepared, family_obj) {
+  y_term <- quote_for_formula(prepared$safe_y)
+  x_term <- quote_for_formula(prepared$safe_x)
+  formula_text <- sprintf("%s ~ s(%s, k = %d)", y_term, x_term, SMOOTH_K)
   cat("GAM 当てはめ中:", formula_text, "\n")
   mgcv::gam(
     formula = stats::as.formula(formula_text),
-    data = clean_data,
+    data = prepared$data,
     family = family_obj,
     method = "REML"
   )
 }
 
-create_scatter_plot <- function(clean_data) {
+create_scatter_plot <- function(prepared) {
   ggplot2::ggplot(
-    clean_data,
-    ggplot2::aes(x = .data[[X_COLUMN]], y = .data[[Y_COLUMN]])
+    prepared$data,
+    ggplot2::aes(x = .data[[prepared$safe_x]], y = .data[[prepared$safe_y]])
   ) +
     ggplot2::geom_point(alpha = SCATTER_ALPHA, color = "#3182bd") +
     ggplot2::geom_smooth(
@@ -167,18 +190,18 @@ create_scatter_plot <- function(clean_data) {
     ggplot2::theme(plot.title = ggplot2::element_text(face = "bold"))
 }
 
-create_effect_plot <- function(gam_model, clean_data) {
+create_effect_plot <- function(gam_model, prepared) {
   x_seq <- seq(
-    from = min(clean_data[[X_COLUMN]], na.rm = TRUE),
-    to = max(clean_data[[X_COLUMN]], na.rm = TRUE),
+    from = min(prepared$data[[prepared$safe_x]], na.rm = TRUE),
+    to = max(prepared$data[[prepared$safe_x]], na.rm = TRUE),
     length.out = PREDICT_POINTS
   )
 
-  newdata <- stats::setNames(data.frame(x_seq), X_COLUMN)
+  newdata <- stats::setNames(data.frame(x_seq), prepared$safe_x)
   pred_terms <- predict(gam_model, newdata = newdata, type = "terms", se.fit = TRUE)
 
   term_names <- colnames(pred_terms$fit)
-  smooth_term <- grep(sprintf("^s\\(%s\\)$", X_COLUMN), term_names, value = TRUE)
+  smooth_term <- grep(sprintf("^s\\(%s\\)$", prepared$safe_x), term_names, value = TRUE)
   if (length(smooth_term) == 0) {
     smooth_term <- term_names[1]
     warning("対応する平滑項が見つからなかったため、最初の項を使用します。")
@@ -193,11 +216,11 @@ create_effect_plot <- function(gam_model, clean_data) {
     lower = effect - CI_MULTIPLIER * se_effect,
     upper = effect + CI_MULTIPLIER * se_effect
   )
-  names(effect_df)[names(effect_df) == "x"] <- X_COLUMN
+  names(effect_df)[names(effect_df) == "x"] <- prepared$safe_x
 
   ggplot2::ggplot(
     effect_df,
-    ggplot2::aes(x = .data[[X_COLUMN]], y = .data[["effect"]])
+    ggplot2::aes(x = .data[[prepared$safe_x]], y = .data[["effect"]])
   ) +
     ggplot2::geom_ribbon(
       ggplot2::aes(ymin = .data[["lower"]], ymax = .data[["upper"]]),
@@ -246,16 +269,17 @@ main <- function() {
   ensure_output_dir()
 
   data <- load_data()
-  clean_data <- prepare_data(data)
+  prepared <- prepare_data(data)
 
-  gam_model <- fit_gam_model(clean_data)
+  family_obj <- resolve_family()
+  gam_model <- fit_gam_model(prepared, family_obj)
 
   cat("\n--- 可視化・保存 ---\n")
   prefix <- resolve_output_prefix()
-  scatter_plot <- create_scatter_plot(clean_data)
+  scatter_plot <- create_scatter_plot(prepared)
   save_plot(scatter_plot, sprintf("%s_scatter.png", prefix))
 
-  effect_plot <- create_effect_plot(gam_model, clean_data)
+  effect_plot <- create_effect_plot(gam_model, prepared)
   save_plot(effect_plot, sprintf("%s_gam_effect.png", prefix))
 
   if (isTRUE(SAVE_SUMMARY)) {
@@ -266,7 +290,7 @@ main <- function() {
   cat(
     "設定: smooth k =", SMOOTH_K,
     ", family =",
-    if (is.character(GAM_FAMILY)) GAM_FAMILY else class(resolve_family())[1],
+    if (is.character(GAM_FAMILY)) GAM_FAMILY else class(family_obj)[1],
     "\n"
   )
 }
