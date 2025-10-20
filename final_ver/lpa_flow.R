@@ -19,11 +19,16 @@ INPUT_FILE <- "raw_data/dummy_data.csv"  # 分析したいCSVファイルのパ�
 # 分析に使用する列名を直接指定
 TARGET_COLUMNS <- c("542690_00", "542700_00", "542710_00", "542720_00", "542730_00")
 
+# ★★★ スケーリングの設定 ★★★
+# "zscore"（Zスコア標準化）、"minmax"、"minmax_trimmed" から選択
+SCALING_METHOD <- "zscore"
+
 # ★★★ クラスター数の設定 ★★★
 PROFILE_RANGE <- 1:5  # 比較するクラスター数の範囲
 FINAL_CLUSTERS <- 4   # 最終的に使用するクラスター数
 
 # ★★★ 出力設定 ★★★
+LPA_OUTPUT_DIR <- "lpa"  # すべての出力ファイルを保存するディレクトリ
 OUTPUT_PREFIX <- ""  # 出力ファイル名の接頭辞（空文字の場合は元ファイル名ベース）
 SAVE_COMPARISON_TABLE <- TRUE  # 適合度比較表をCSVで保存するか
 COMPARISON_TABLE_FILENAME <- "lpa_comparison_table2.csv"  # 適合度比較表のファイル名
@@ -48,6 +53,14 @@ setup_packages <- function() {
   lapply(packages, library, character.only = TRUE)
   
   cat("✅ パッケージの読み込みが完了しました。\n\n")
+}
+
+#' 出力ディレクトリの作成
+#' @param dir_path 作成したいディレクトリ
+ensure_output_directory <- function(dir_path) {
+  if (!dir.exists(dir_path)) {
+    dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
+  }
 }
 
 # ---------------------------------------------------------------
@@ -106,6 +119,70 @@ select_lpa_variables <- function(data) {
 }
 
 # ---------------------------------------------------------------
+# 追加ユーティリティ: スケーリング処理
+# ---------------------------------------------------------------
+
+#' 特徴量のスケーリング
+#' @param df 数値列のみを含むデータフレーム
+#' @param method スケーリング手法（"zscore"/"minmax"/"minmax_trimmed"）
+apply_scaling_method <- function(df, method) {
+  method <- tolower(method)
+
+  if (!nrow(df) || !ncol(df)) {
+    return(df)
+  }
+
+  scale_minmax <- function(x) {
+    if (all(is.na(x))) {
+      return(rep(NA_real_, length(x)))
+    }
+    rng <- range(x, na.rm = TRUE)
+    if (!is.finite(rng[1]) || !is.finite(rng[2]) || diff(rng) == 0) {
+      return(rep(0.5, length(x)))
+    }
+    (x - rng[1]) / diff(rng)
+  }
+
+  scale_minmax_trimmed <- function(x) {
+    if (all(is.na(x))) {
+      return(rep(NA_real_, length(x)))
+    }
+    q05 <- stats::quantile(x, 0.05, na.rm = TRUE, names = FALSE, type = 7)
+    q95 <- stats::quantile(x, 0.95, na.rm = TRUE, names = FALSE, type = 7)
+    trimmed <- pmax(pmin(x, q95), q05)
+    rng <- range(trimmed, na.rm = TRUE)
+    if (!is.finite(rng[1]) || !is.finite(rng[2]) || diff(rng) == 0) {
+      return(rep(0.5, length(x)))
+    }
+    (trimmed - rng[1]) / diff(rng)
+  }
+
+  scale_zscore <- function(x) {
+    if (all(is.na(x))) {
+      return(rep(NA_real_, length(x)))
+    }
+    mu <- mean(x, na.rm = TRUE)
+    sigma <- stats::sd(x, na.rm = TRUE)
+    if (is.na(sigma) || sigma == 0) {
+      return(rep(0, length(x)))
+    }
+    (x - mu) / sigma
+  }
+
+  scaled_list <- switch(
+    method,
+    "minmax" = lapply(df, scale_minmax),
+    "minmax_trimmed" = lapply(df, scale_minmax_trimmed),
+    "zscore" = lapply(df, scale_zscore),
+    stop("❌ 未対応のスケーリング手法です: ", method)
+  )
+
+  scaled_df <- as.data.frame(scaled_list, optional = FALSE, stringsAsFactors = FALSE, check.names = FALSE)
+  names(scaled_df) <- names(df)
+  scaled_df
+}
+
+# ---------------------------------------------------------------
 # 3. LPA実行とモデル比較
 # ---------------------------------------------------------------
 
@@ -127,9 +204,11 @@ prepare_lpa_data <- function(data, selected_columns) {
     mutate(across(all_of(selected_columns), as.numeric)) %>%
     na.omit()
   
-  # Zスコアに標準化
+  # スケーリングの実行
   df_to_scale <- df_for_lpa %>% select(-row_id)
-  df_scaled <- as.data.frame(scale(df_to_scale))
+  scaling_method <- tolower(SCALING_METHOD)
+  df_scaled <- apply_scaling_method(df_to_scale, scaling_method)
+  cat(paste("   スケーリング方法:", scaling_method, "\n"))
   
   # row_idを再度結合
   df_analysis <- bind_cols(df_for_lpa %>% select(row_id), df_scaled)
@@ -342,9 +421,11 @@ display_and_save_comparison <- function(comparison_table) {
   
   # CSVファイルとして保存（設定に応じて）
   if (SAVE_COMPARISON_TABLE) {
-    write_csv(comparison_table, COMPARISON_TABLE_FILENAME)
+    ensure_output_directory(LPA_OUTPUT_DIR)
+    comparison_output_path <- file.path(LPA_OUTPUT_DIR, COMPARISON_TABLE_FILENAME)
+    write_csv(comparison_table, comparison_output_path)
     if (SHOW_DETAILED_OUTPUT) {
-      cat(paste("💾 適合度比較表が '", COMPARISON_TABLE_FILENAME, "' として保存されました。\n", sep=""))
+  cat(paste("💾 適合度比較表が '", normalizePath(comparison_output_path), "' として保存されました。\n", sep=""))
       cat(paste("   📊 クラス所属割合（% in each class）を含む比較表が保存されました。\n"))
       cat(paste("   📋 含まれる列: ", paste(colnames(comparison_table), collapse = ", "), "\n\n"))
     }
@@ -525,7 +606,8 @@ save_final_results <- function(df_final, original_file_path) {
   }
   
   # 出力ファイル名を生成
-  output_dir <- dirname(original_file_path)
+  output_dir <- LPA_OUTPUT_DIR
+  ensure_output_directory(output_dir)
   base_name <- tools::file_path_sans_ext(basename(original_file_path))
   
   if (OUTPUT_PREFIX != "") {
@@ -541,7 +623,7 @@ save_final_results <- function(df_final, original_file_path) {
   
   if (SHOW_DETAILED_OUTPUT) {
     cat(paste("✅ クラスター情報付きファイルが保存されました。\n"))
-    cat(paste("   📁 保存先: ", output_path, "\n\n"))
+    cat(paste("   📁 保存先: ", normalizePath(output_path), "\n\n"))
   }
   
   return(output_path)
@@ -615,6 +697,9 @@ main_lpa_flow <- function() {
   
   # 1. パッケージセットアップ
   setup_packages()
+
+  # 出力ディレクトリを事前に用意
+  ensure_output_directory(LPA_OUTPUT_DIR)
   
   # 2. データ読み込み
   data_info <- load_data()
