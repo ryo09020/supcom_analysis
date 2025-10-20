@@ -55,6 +55,29 @@ analyze_by_class_improved <- function(file_path, columns_to_test, class_column) 
   
   # クラス列を因子型に変換
   df[[class_column]] <- as.factor(df[[class_column]])
+
+  # 指定列の存在チェック
+  missing_columns <- setdiff(columns_to_test, names(df))
+  if (length(missing_columns) > 0) {
+    stop(
+      paste0(
+        "エラー: データ内に存在しない列が指定されています -> ",
+        paste(missing_columns, collapse = ", ")
+      )
+    )
+  }
+
+  # 分析対象列を数値型に変換。変換できない値はNAになる
+  for (col in columns_to_test) {
+    if (!is.numeric(df[[col]])) {
+      original_na_count <- sum(is.na(df[[col]]))
+      df[[col]] <- suppressWarnings(as.numeric(as.character(df[[col]])))
+      new_na_count <- sum(is.na(df[[col]])) - original_na_count
+      if (new_na_count > 0) {
+        cat(sprintf("情報: 列 '%s' で、数値に変換できない %d 個の値をNAとして扱います。\n", col, new_na_count))
+      }
+    }
+  }
   
   # 結果を格納するための空のリストを作成
   results_list <- list()
