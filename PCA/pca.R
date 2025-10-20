@@ -36,10 +36,97 @@ PLOT_DPI <- 300  # プロットの解像度
 SHOW_DETAILED_OUTPUT <- TRUE  # 詳細な進行状況を表示するか
 SHOW_LOADINGS_THRESHOLD <- 0.3  # 因子負荷量の表示閾値
 
+# ★★★ MMSE 可視化設定 ★★★
+MMSE_COLUMN <- "Mini-Mental State Exam"  # MMSEスコア列名
+AGE_COLUMN <- "Age"  # 年齢列名
+MMSE_BREAKS <- c(0, 0.5, 1, 3)  # t-SNEスクリプトと同様のカテゴリ境界
+MMSE_LABELS <- c("Low (≤23)", "Medium (24-27)", "High (≥28)")
+MMSE_COLOR_PALETTE <- c("#E31A1C", "#FF7F00", "#1F78B4")
+MMSE_MISSING_COLOR <- "#6C757D"
+
+invisible(utils::globalVariables(c(
+  "row_id", "mmse_category", "mmse_value", "count", "PC1", "PC2"
+)))
+
 # ================================================================
 
 # ---------------------------------------------------------------
-# 1. パッケージ管理とセットアップ
+# 1. ユーティリティ
+# ---------------------------------------------------------------
+
+#' MMSE列の数値化とカテゴリ変換を実施
+prepare_mmse_info <- function(data) {
+  if (!(MMSE_COLUMN %in% names(data))) {
+    stop(sprintf("入力データに MMSE 列 '%s' がありません。", MMSE_COLUMN))
+  }
+  if (!(AGE_COLUMN %in% names(data))) {
+    stop(sprintf("入力データに年齢列 '%s' がありません。", AGE_COLUMN))
+  }
+
+  mmse_raw <- data[[MMSE_COLUMN]]
+  mmse_chr <- trimws(as.character(mmse_raw))
+  mmse_chr[mmse_chr == ""] <- NA_character_
+  mmse_numeric <- suppressWarnings(as.numeric(mmse_chr))
+  invalid_numeric <- !is.na(mmse_chr) & is.na(mmse_numeric)
+
+  if (any(invalid_numeric, na.rm = TRUE)) {
+    cat(sprintf("⚠️ MMSE列で数値に変換できなかった値: %d件 → NAとして扱います。\n",
+                sum(invalid_numeric, na.rm = TRUE)))
+  }
+
+  age_raw <- data[[AGE_COLUMN]]
+  age_chr <- trimws(as.character(age_raw))
+  age_chr[age_chr == ""] <- NA_character_
+  age_numeric <- suppressWarnings(as.numeric(age_chr))
+  invalid_age <- !is.na(age_chr) & is.na(age_numeric)
+
+  if (any(invalid_age, na.rm = TRUE)) {
+    cat(sprintf("⚠️ 年齢列で数値に変換できなかった値: %d件 → 年齢条件の計算から除外します。\n",
+                sum(invalid_age, na.rm = TRUE)))
+  }
+
+  missing_mmse_young <- is.na(mmse_numeric) & !is.na(age_numeric) & age_numeric <= 64
+  filled_young <- sum(missing_mmse_young, na.rm = TRUE)
+
+  if (filled_young > 0) {
+    cat(sprintf("ℹ️ 64歳以下の欠損MMSEを満点(30)で補完: %d件\n", filled_young))
+    mmse_numeric[missing_mmse_young] <- 30
+  }
+
+  expected_breaks <- length(MMSE_LABELS) + 1
+  if (length(MMSE_BREAKS) != expected_breaks) {
+    stop(sprintf("MMSE_BREAKS はラベル数+1 個の値が必要です (現在: %d, 期待: %d)",
+                 length(MMSE_BREAKS), expected_breaks))
+  }
+
+  adjusted_breaks <- MMSE_BREAKS
+  last_break <- tail(adjusted_breaks, 1)
+  if (!is.infinite(last_break) && any(mmse_numeric > last_break, na.rm = TRUE)) {
+    adjusted_breaks[length(adjusted_breaks)] <- Inf
+  }
+
+  mmse_category <- cut(
+    mmse_numeric,
+    breaks = adjusted_breaks,
+    labels = MMSE_LABELS,
+    include.lowest = TRUE,
+    right = TRUE
+  )
+
+  list(
+    mapping = tibble::tibble(
+      row_id = data$row_id,
+      mmse_value = mmse_numeric,
+      mmse_category = mmse_category
+    ),
+    invalid_numeric = sum(invalid_numeric, na.rm = TRUE),
+    invalid_age = sum(invalid_age, na.rm = TRUE),
+    filled_young = filled_young
+  )
+}
+
+# ---------------------------------------------------------------
+# 2. パッケージ管理とセットアップ
 # ---------------------------------------------------------------
 
 #' パッケージの読み込み（スーパーコンピューター用）
@@ -68,7 +155,7 @@ setup_packages <- function() {
 }
 
 # ---------------------------------------------------------------
-# 2. データ読み込みと準備
+# 3. データ読み込みと準備
 # ---------------------------------------------------------------
 
 #' CSVファイルの読み込み
@@ -135,6 +222,9 @@ prepare_pca_data <- function(data, selected_columns) {
   # 元のデータに行IDを付与
   df_original <- data %>%
     mutate(row_id = row_number())
+
+  # MMSE列の前処理
+  mmse_info <- prepare_mmse_info(df_original)
   
   # PCA分析用のデータを作成
   df_for_pca <- df_original %>%
@@ -178,16 +268,32 @@ prepare_pca_data <- function(data, selected_columns) {
   cat(paste("✅ 分析用データ準備完了。対象者:", nrow(df_analysis), "名\n"))
   cat(paste("   欠損値により除外:", nrow(data) - nrow(df_analysis), "名\n\n"))
   
+  row_mapping <- df_analysis %>%
+    select(row_id) %>%
+    left_join(mmse_info$mapping, by = "row_id")
+
+  if (SHOW_DETAILED_OUTPUT) {
+    mmse_summary <- row_mapping %>%
+      dplyr::mutate(mmse_category = forcats::fct_explicit_na(.data$mmse_category, na_level = "Missing")) %>%
+      dplyr::count(mmse_category, name = "count") %>%
+      dplyr::arrange(dplyr::desc(.data$count))
+
+    cat("📐 MMSEカテゴリ内訳 (PCA対象データのみ):\n")
+    print(mmse_summary, n = nrow(mmse_summary))
+    cat("\n")
+  }
+
   return(list(
     original = df_original,
     for_pca = df_for_pca,
     analysis = df_analysis %>% select(-row_id),
-    row_mapping = df_analysis %>% select(row_id)
+    row_mapping = row_mapping,
+    mmse_details = mmse_info
   ))
 }
 
 # ---------------------------------------------------------------
-# 3. PCA実行
+# 4. PCA実行
 # ---------------------------------------------------------------
 
 #' PCAの実行
@@ -233,7 +339,7 @@ run_pca_analysis <- function(df_analysis) {
 }
 
 # ---------------------------------------------------------------
-# 4. 結果の整理と表示
+# 5. 結果の整理と表示
 # ---------------------------------------------------------------
 
 #' PCA結果の要約表示
@@ -320,7 +426,7 @@ create_loadings_table <- function(pca_results) {
 }
 
 # ---------------------------------------------------------------
-# 5. 可視化
+# 6. 可視化
 # ---------------------------------------------------------------
 
 #' スクリープロットの作成（改良版）
@@ -426,29 +532,91 @@ create_scree_plot <- function(pca_results) {
 }
 
 #' バイプロットの作成
-create_biplot <- function(pca_results) {
+create_biplot <- function(pca_results, mmse_categories, palette = MMSE_COLOR_PALETTE) {
   cat("📊 バイプロットを作成中...\n")
-  
+
   factomine_result <- pca_results$factomine
-  
-  # factoextraパッケージを使用してバイプロット作成
-  biplot <- fviz_pca_biplot(factomine_result,
-                           axes = c(1, 2),
-                           geom.ind = "point",
-                           geom.var = c("arrow", "text"),
-                           col.ind = "steelblue",
-                           col.var = "red",
-                           alpha.ind = 0.6,
-                           repel = TRUE,
-                           title = "PCA Biplot (PC1 vs PC2)") +
+  scores <- factomine_result$ind$coord
+
+  if (nrow(scores) != length(mmse_categories)) {
+    stop("MMSEカテゴリの長さがPCAの個体数と一致しません。")
+  }
+
+  mmse_factor <- factor(mmse_categories, levels = MMSE_LABELS)
+  mmse_factor <- forcats::fct_explicit_na(mmse_factor, na_level = "Missing")
+
+  palette_named <- setNames(c(palette, MMSE_MISSING_COLOR), c(MMSE_LABELS, "Missing"))
+  palette_used <- unname(palette_named[levels(mmse_factor)])
+
+  biplot <- fviz_pca_biplot(
+    factomine_result,
+    axes = c(1, 2),
+    geom.ind = "point",
+    geom.var = c("arrow", "text"),
+    habillage = mmse_factor,
+    palette = palette_used,
+    col.var = "red",
+    alpha.ind = 0.7,
+    repel = TRUE,
+    title = "PCA Biplot Colored by MMSE"
+  ) +
+    labs(color = "MMSE Category") +
     theme_classic() +
     theme(
-      plot.title = element_text(hjust = 0.5, size = 14),
+      plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+      legend.title = element_text(face = "bold"),
       panel.background = element_rect(fill = "white", color = "white"),
       plot.background = element_rect(fill = "white", color = "white")
     )
-  
+
   return(biplot)
+}
+
+#' MMSEカテゴリ別のPCAスコア散布図を作成
+create_mmse_scores_plot <- function(pca_results, mmse_categories, palette = MMSE_COLOR_PALETTE) {
+  cat("🌈 MMSEカテゴリ別スコア散布図を作成中...\n")
+
+  factomine_result <- pca_results$factomine
+  scores <- factomine_result$ind$coord
+
+  if (nrow(scores) == 0) {
+    stop("PCAスコアが存在しません。")
+  }
+  if (nrow(scores) != length(mmse_categories)) {
+    stop("MMSEカテゴリの長さがPCAの個体数と一致しません。")
+  }
+
+  mmse_factor <- factor(mmse_categories, levels = MMSE_LABELS)
+  mmse_factor <- forcats::fct_explicit_na(mmse_factor, na_level = "Missing")
+
+  palette_named <- setNames(c(palette, MMSE_MISSING_COLOR), c(MMSE_LABELS, "Missing"))
+  palette_used <- unname(palette_named[levels(mmse_factor)])
+
+  scores_df <- tibble::as_tibble(scores[, 1:2, drop = FALSE], .name_repair = "minimal") %>%
+    dplyr::rename(PC1 = 1, PC2 = 2) %>%
+    dplyr::mutate(mmse_category = mmse_factor)
+
+  eigenvalues <- factomine_result$eig[, 2]
+  axis_x <- sprintf("PC1 (%.1f%%)", eigenvalues[1])
+  axis_y <- sprintf("PC2 (%.1f%%)", eigenvalues[2])
+
+  ggplot(scores_df, aes(x = .data$PC1, y = .data$PC2, color = .data$mmse_category)) +
+    geom_point(size = 2.8, alpha = 0.8) +
+    scale_color_manual(values = palette_used, drop = FALSE) +
+    labs(
+      title = "PCA Scores Colored by MMSE",
+      x = axis_x,
+      y = axis_y,
+      color = "MMSE Category"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+      panel.grid.major = element_line(color = "gray90"),
+      panel.grid.minor = element_blank(),
+      legend.title = element_text(face = "bold"),
+      panel.border = element_rect(fill = NA, color = "gray70", linewidth = 1)
+    )
 }
 
 #' 因子負荷量ヒートマップの作成
@@ -620,11 +788,11 @@ create_pca_concept_plot <- function(pca_results) {
 }
 
 # ---------------------------------------------------------------
-# 6. 結果の保存
+# 7. 結果の保存
 # ---------------------------------------------------------------
 
 #' プロットの保存
-save_plots <- function(scree_plots, biplot, heatmap_plot, interpretation_plot = NULL, concept_plot = NULL) {
+save_plots <- function(scree_plots, biplot, mmse_plot, heatmap_plot, interpretation_plot = NULL, concept_plot = NULL) {
   if (!SAVE_PLOTS) {
     cat("ℹ️  プロット保存がスキップされました。\n")
     return()
@@ -641,6 +809,11 @@ save_plots <- function(scree_plots, biplot, heatmap_plot, interpretation_plot = 
   ggsave(paste0(OUTPUT_PREFIX, "_biplot.png"), 
          plot = biplot, 
          width = PLOT_WIDTH, height = PLOT_HEIGHT, dpi = PLOT_DPI)
+
+  # MMSEカテゴリ散布図
+  ggsave(paste0(OUTPUT_PREFIX, "_scores_by_mmse.png"), 
+    plot = mmse_plot, 
+    width = PLOT_WIDTH, height = PLOT_HEIGHT, dpi = PLOT_DPI)
   
   # 因子負荷量ヒートマップ
   png(paste0(OUTPUT_PREFIX, "_loadings_heatmap.png"), 
@@ -663,6 +836,7 @@ save_plots <- function(scree_plots, biplot, heatmap_plot, interpretation_plot = 
   }
   
   cat("✅ プロットの保存完了。\n")
+  cat("  - MMSEカテゴリ散布図を保存しました。\n")
   if (!is.null(interpretation_plot)) {
     cat("  - PCA軸の解釈図も保存されました。\n")
   }
@@ -719,7 +893,7 @@ save_results_csv <- function(pca_results, loadings_table, original_data, row_map
 }
 
 # ---------------------------------------------------------------
-# 7. メイン実行関数
+# 8. メイン実行関数
 # ---------------------------------------------------------------
 
 #' PCA統合フローのメイン実行関数
@@ -759,13 +933,15 @@ main_pca_flow <- function() {
   
   # 8. 可視化
   scree_plots <- create_scree_plot(pca_results)
-  biplot <- create_biplot(pca_results)
+  mmse_categories <- prepared_data$row_mapping$mmse_category
+  biplot <- create_biplot(pca_results, mmse_categories)
+  mmse_scores_plot <- create_mmse_scores_plot(pca_results, mmse_categories)
   heatmap_plot <- create_loadings_heatmap(pca_results)
   interpretation_plot <- create_pca_interpretation_plot(pca_results)
   concept_plot <- create_pca_concept_plot(pca_results)
   
   # 9. 保存
-  save_plots(scree_plots, biplot, heatmap_plot, interpretation_plot, concept_plot)
+  save_plots(scree_plots, biplot, mmse_scores_plot, heatmap_plot, interpretation_plot, concept_plot)
   save_results_csv(pca_results, loadings_table, prepared_data$original, prepared_data$row_mapping)
   
   if (SHOW_DETAILED_OUTPUT) {
@@ -780,6 +956,7 @@ main_pca_flow <- function() {
     plots = list(
       scree = scree_plots,
       biplot = biplot,
+      mmse_scores = mmse_scores_plot,
       heatmap = heatmap_plot,
       interpretation = interpretation_plot,
       concept = concept_plot
@@ -792,6 +969,16 @@ main_pca_flow <- function() {
 # ---------------------------------------------------------------
 
 # 🚀 メイン実行
+args <- commandArgs(trailingOnly = TRUE)
+if (length(args) >= 1 && nzchar(args[1])) {
+  INPUT_FILE <<- args[1]
+  cat(sprintf("🛠️  INPUT_FILE を上書き: %s\n", INPUT_FILE))
+}
+if (length(args) >= 2 && nzchar(args[2])) {
+  OUTPUT_PREFIX <<- args[2]
+  cat(sprintf("🛠️  OUTPUT_PREFIX を上書き: %s\n", OUTPUT_PREFIX))
+}
+
 cat("🔍 PCA統合分析スクリプト\n")
 cat(paste("📊 分析対象項目:", length(TARGET_COLUMNS), "個\n"))
 cat(paste("📈 抽出主成分数:", N_COMPONENTS, "(最大)\n"))

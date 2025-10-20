@@ -228,6 +228,10 @@ if (use_sample_data) {
   raw_data <- read_csv(input_csv_path, locale = locale(encoding = "UTF-8"))
 }
 
+cat("入力データの列名:\n")
+print(names(raw_data))
+cat("\n")
+
 analysis_outputs <- run_mmse_analysis(
   df = raw_data,
   class_col = class_column_name,
