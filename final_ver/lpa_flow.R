@@ -247,7 +247,7 @@ run_lpa_models <- function(df_analysis, profile_range = PROFILE_RANGE) {
     analysis_data,
     n_profiles = profile_range,
     boot_for_p = TRUE,  # BLRT p-valueを計算
-    models= 6
+    models= 1
   )
   
   cat("✅ LPA計算完了。\n")
@@ -364,33 +364,51 @@ create_comparison_table <- function(lpa_models) {
     }
     
     # 最終的な比較表を作成
+    rename_map <- c(
+      Classes = "Profiles",
+      LogLik = "Log-likelihood",
+      SABIC = "Sample-Size Adjusted BIC",
+      BLRT_p = "BLRT p-value",
+      VLMR_p = "VLMR p-value",
+      prob_min = "Prob Min",
+      prob_max = "Prob Max",
+      n_min = "N Min",
+      n_max = "N Max",
+      BLRT_val = "BLRT Value"
+    )
+    common_cols <- intersect(names(rename_map), names(fit_indices))
+
     final_comparison_table <- fit_indices %>%
-      rename(
-        Profiles = Classes,
-        `Log-likelihood` = LogLik,
-        `Sample-Size Adjusted BIC` = SABIC,
-        `BLRT p-value` = BLRT_p,
-        `VLMR p-value` = VLMR_p,
-        `Prob Min` = prob_min,
-        `Prob Max` = prob_max,
-        `N Min` = n_min,
-        `N Max` = n_max,
-        `BLRT Value` = BLRT_val
+      dplyr::rename_with(
+        .cols = dplyr::all_of(common_cols),
+        .fn = ~ unname(rename_map[.x])
       ) %>%
-      left_join(class_proportions, by = "Profiles") %>%
-      mutate(
-        across(c(`Log-likelihood`, AIC, AWE, BIC, CAIC, CLC, KIC, `Sample-Size Adjusted BIC`, ICL), ~round(.x, 2)),
-        across(c(Entropy, `BLRT p-value`, `VLMR p-value`, `Prob Min`, `Prob Max`), ~round(.x, 3)),
-        across(c(`BLRT Value`), ~round(.x, 2)),
-        across(c(Profiles, Parameters, `N Min`, `N Max`), ~as.integer(.x))
-      ) %>%
-      # 列の順序を整理（モデル情報→基本情報→適合度指標→分類精度→その他）
-      select(
-        Model, Profiles, `Log-likelihood`, AIC, BIC, `Sample-Size Adjusted BIC`, AWE, CAIC, CLC, KIC, ICL,
-        Entropy, `BLRT p-value`, `VLMR p-value`, `BLRT Value`,
-        `Prob Min`, `Prob Max`, `N Min`, `N Max`, Parameters,
-        `% in each class`
+      dplyr::left_join(class_proportions, by = "Profiles") %>%
+      dplyr::mutate(
+        dplyr::across(
+          tidyselect::any_of(c("Log-likelihood", "AIC", "AWE", "BIC", "CAIC", "CLC", "KIC", "Sample-Size Adjusted BIC", "ICL")),
+          ~ round(.x, 2)
+        ),
+        dplyr::across(
+          tidyselect::any_of(c("Entropy", "BLRT p-value", "VLMR p-value", "Prob Min", "Prob Max")),
+          ~ round(.x, 3)
+        ),
+        dplyr::across(tidyselect::any_of(c("BLRT Value")), ~ round(.x, 2)),
+        dplyr::across(
+          tidyselect::any_of(c("Profiles", "Parameters", "N Min", "N Max")),
+          ~ as.integer(.x)
+        )
       )
+
+    desired_order <- c(
+      "Model", "Profiles", "Log-likelihood", "AIC", "BIC", "Sample-Size Adjusted BIC", "AWE", "CAIC", "CLC", "KIC", "ICL",
+      "Entropy", "BLRT p-value", "VLMR p-value", "BLRT Value",
+      "Prob Min", "Prob Max", "N Min", "N Max", "Parameters",
+      "% in each class"
+    )
+
+    final_comparison_table <- final_comparison_table %>%
+      dplyr::select(tidyselect::any_of(desired_order))
     
     cat("✅ 実際の所属割合を含む比較表の作成完了。\n\n")
     return(final_comparison_table)
@@ -405,6 +423,10 @@ create_comparison_table <- function(lpa_models) {
 #' @description 比較表を表示し、設定に応じてCSVファイルとして保存
 #' @param comparison_table 比較表
 display_and_save_comparison <- function(comparison_table) {
+  if (is.null(comparison_table)) {
+    stop("❌ comparison_table が NULL です。create_comparison_table() の処理を確認してください。")
+  }
+
   if (SHOW_DETAILED_OUTPUT) {
     cat("📈 適合度指標の比較表:\n")
     cat("--------------------------------------------------\n")
@@ -423,6 +445,9 @@ display_and_save_comparison <- function(comparison_table) {
   if (SAVE_COMPARISON_TABLE) {
     ensure_output_directory(LPA_OUTPUT_DIR)
     comparison_output_path <- file.path(LPA_OUTPUT_DIR, COMPARISON_TABLE_FILENAME)
+    if (!inherits(comparison_table, "data.frame")) {
+      stop("❌ comparison_table は data.frame/tibble ではありません。write_csv() に渡す前に構造を確認してください。")
+    }
     write_csv(comparison_table, comparison_output_path)
     if (SHOW_DETAILED_OUTPUT) {
   cat(paste("💾 適合度比較表が '", normalizePath(comparison_output_path), "' として保存されました。\n", sep=""))
