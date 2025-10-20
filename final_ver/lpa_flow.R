@@ -310,42 +310,52 @@ create_comparison_table <- function(lpa_models) {
     # 各クラスター数の実際の所属割合を計算
     cat("📊 各クラスター数のクラス所属割合を計算中...\n")
     
-    class_proportions_list <- list()
-    
+    class_proportions_list <- vector("list", length(lpa_models))
+    fit_classes <- fit_indices$Classes
+
     # 各クラスター数について実際の所属割合を計算
-    for(i in 1:length(lpa_models)) {
-      # tidyLPAモデル名から正しいクラスター数を抽出
+    for (i in seq_along(lpa_models)) {
       model_name <- names(lpa_models)[i]
-      profiles_num <- as.numeric(gsub("model_6_class_", "", model_name))
-      
+      profiles_num <- if (length(fit_classes) >= i) fit_classes[i] else NA_real_
+
       if (SHOW_DETAILED_OUTPUT) {
-        cat(paste("   処理中:", model_name, "-> クラスター数:", profiles_num, "\n"))
+        cat(paste("   処理中:", model_name, "-> クラスター数候補:", profiles_num, "\n"))
       }
-      
-      tryCatch({
-        # 各クラスター数モデルからデータを取得
+
+      class_proportions_list[[i]] <- tryCatch({
         model_data <- get_data(lpa_models[[i]])
-        if (!is.null(model_data) && "Class" %in% colnames(model_data)) {
-          class_stats <- model_data %>%
-            count(Class) %>%
-            mutate(Percentage = round(n / sum(n) * 100))
-          
-          proportions_text <- paste(class_stats$Percentage, collapse = "/")
-          
-          class_proportions_list[[i]] <- data.frame(
-            Profiles = profiles_num,
-            `% in each class` = proportions_text,
-            stringsAsFactors = FALSE
-          )
-          
-          if (SHOW_DETAILED_OUTPUT) {
-            cat(paste("   ", profiles_num, "クラスター: ", proportions_text, "\n"))
-          }
+
+        if (is.null(model_data) || !"Class" %in% colnames(model_data)) {
+          stop("Class 列を含むデータが取得できませんでした。")
         }
+
+        if (is.na(profiles_num) || !is.finite(profiles_num)) {
+          profiles_num <- length(unique(model_data$Class))
+        }
+
+        class_stats <- model_data %>%
+          dplyr::count(Class, name = "N") %>%
+          dplyr::arrange(Class) %>%
+          dplyr::mutate(
+            Percentage = round(N / sum(N) * 100, 1),
+            Class = as.integer(Class)
+          )
+
+        proportions_text <- paste(class_stats$Percentage, collapse = "/")
+
+        if (SHOW_DETAILED_OUTPUT) {
+          cat(paste("   ", profiles_num, "クラスター: ", proportions_text, "\n"))
+        }
+
+        data.frame(
+          Profiles = as.integer(profiles_num),
+          `% in each class` = proportions_text,
+          stringsAsFactors = FALSE
+        )
       }, error = function(e) {
-        cat(paste("⚠️ ", profiles_num, "クラスターの割合計算でエラー:", e$message, "\n"))
-        class_proportions_list[[i]] <- data.frame(
-          Profiles = profiles_num,
+        cat(paste("⚠️ クラスター割合算出でエラー (", model_name, "): ", e$message, "\n", sep = ""))
+        data.frame(
+          Profiles = as.integer(profiles_num),
           `% in each class` = "N/A",
           stringsAsFactors = FALSE
         )
@@ -490,23 +500,16 @@ get_selected_model <- function(lpa_models, n_clusters) {
   model_names <- names(lpa_models)
   cat(paste("🔍 利用可能なモデル名:", paste(model_names, collapse = ", "), "\n"))
   
-  # tidyLPAの命名規則に従ってモデルを検索
-  target_pattern <- paste0("model_6_class_", n_clusters)
-  model_index <- which(model_names == target_pattern)
+  # tidyLPAの命名規則（model_{モデル番号}_class_{クラス数}）に対応
+  model_index <- grep(paste0("_class_", n_clusters, "$"), model_names)
   
   if (length(model_index) == 0) {
-    # 代替パターンを試行
-    alt_patterns <- c(
-      as.character(n_clusters),
-      paste0("class_", n_clusters),
-      paste0(n_clusters, "_class")
-    )
-    
-    for (pattern in alt_patterns) {
-      model_index <- which(model_names == pattern)
-      if (length(model_index) > 0) break
-    }
+    stop(paste("❌ ", n_clusters, "クラスターのモデルが見つかりません。利用可能なモデル名: ", 
+               paste(model_names, collapse = ", "), sep=""))
   }
+  
+  # 同じクラス数のモデルが複数ある場合は最初のものを採用
+  model_index <- model_index[1]
   
   if (length(model_index) == 0) {
     stop(paste("❌ ", n_clusters, "クラスターのモデルが見つかりません。利用可能なモデル名: ", 
