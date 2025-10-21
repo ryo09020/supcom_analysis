@@ -146,6 +146,32 @@ prepare_pca_data <- function(data) {
 		select(all_of(TARGET_COLUMNS)) %>%
 		mutate(across(everything(), as.numeric))
 
+	complete_rows <- stats::complete.cases(cp_data)
+	if (!all(complete_rows)) {
+		dropped <- sum(!complete_rows)
+		cat(glue("ℹ️ Dropping {dropped} rows with missing predictor values\n"))
+		cp_data <- cp_data[complete_rows, , drop = FALSE]
+		working <- working[complete_rows, , drop = FALSE]
+	}
+
+	zero_var <- vapply(
+		cp_data,
+		function(x) {
+			std <- stats::sd(x, na.rm = TRUE)
+			is.na(std) || isTRUE(all.equal(std, 0))
+		},
+		logical(1)
+	)
+	if (any(zero_var)) {
+		removed_cols <- names(zero_var)[zero_var]
+		cat(glue("ℹ️ Removing {length(removed_cols)} zero-variance column(s): {paste(removed_cols, collapse = ', ')}\n"))
+		cp_data <- cp_data[, !zero_var, drop = FALSE]
+	}
+
+	if (!nrow(cp_data) || !ncol(cp_data)) {
+		stop("No data remaining after cleaning for PCA.")
+	}
+
 	if (STANDARDIZE_DATA) {
 		pca_input <- scale(cp_data)
 	} else {
