@@ -25,7 +25,7 @@ library(viridis)
 
 # ▼ ユーザーが設定する項目 ▼
 # CSVファイルのパス
-file_path <- "raw_data/dummy_data_with_clusters_sorted.csv"
+file_path <- "raw_data/dummy_data.csv"
 
 # クラスター列の名前
 cluster_column <- "Class"
@@ -33,8 +33,21 @@ cluster_column <- "Class"
 # 分析したい項目名（複数選択可能）
 target_items <- c("X542690_00", "X542700_00", "X542710_00", "X542720_00", "X542730_00")
 
-# 共変量として調整したい項目（例：性別、年齢、教育歴など）
-covariates <- c("sex", "age", "final_education")
+# 項目カテゴリの指定（リスク因子/保護因子など）
+risk_factor_items <- c("X542690_00", "X542700_00")
+protective_factor_items <- c("X542710_00", "X542720_00", "X542730_00")
+
+# 項目ラベル（凡例・軸用）。必要に応じて値を書き換えてください
+item_labels <- c(
+  X542690_00 = "X542690_00",
+  X542700_00 = "X542700_00",
+  X542710_00 = "X542710_00",
+  X542720_00 = "X542720_00",
+  X542730_00 = "X542730_00"
+)
+
+# 共変量として調整したい項目（例：性別、年齢など）
+covariates <- c( "age")
 
 # 図のタイトル
 plot_title <- "Z-score of cluster-specific item values (adjusted for covariates)"
@@ -70,20 +83,98 @@ if (length(missing_columns) > 0) {
 # データの前処理
 cat("データを前処理中...\n")
 
+# 項目カテゴリの検証と整備
+item_category_df <- tibble(
+  Item = target_items,
+  Category = case_when(
+    Item %in% risk_factor_items ~ "Risk Factor",
+    Item %in% protective_factor_items ~ "Protective Factor",
+    TRUE ~ "Unspecified"
+  )
+)
+
+unknown_category_items <- item_category_df %>% filter(Category == "Unspecified") %>% pull(Item)
+if (length(unknown_category_items) > 0) {
+  warning(
+    "ターゲット項目のうちカテゴリが未指定の項目があります: ",
+    paste(unknown_category_items, collapse = ", "),
+    call. = FALSE
+  )
+}
+
+duplicated_assignments <- intersect(risk_factor_items, protective_factor_items)
+if (length(duplicated_assignments) > 0) {
+  stop(
+    "同じ項目がリスク因子と保護因子の両方に指定されています: ",
+    paste(duplicated_assignments, collapse = ", "),
+    call. = FALSE
+  )
+}
+
+# 項目ラベルの整備
+if (length(item_labels) == 0) {
+  item_labels <- setNames(target_items, target_items)
+}
+
+if (is.null(names(item_labels)) || any(names(item_labels) == "")) {
+  stop("item_labels は target_items と同じ名前を持つ名前付きベクトルで指定してください。", call. = FALSE)
+}
+
+missing_label_items <- setdiff(target_items, names(item_labels))
+if (length(missing_label_items) > 0) {
+  warning(
+    "item_labels に指定されていない項目があります。該当項目は列名をラベルとして使用します: ",
+    paste(missing_label_items, collapse = ", "),
+    call. = FALSE
+  )
+  item_labels <- c(item_labels, setNames(missing_label_items, missing_label_items))
+}
+
+extra_label_items <- setdiff(names(item_labels), target_items)
+if (length(extra_label_items) > 0) {
+  warning(
+    "target_items に含まれない項目が item_labels に指定されています（無視されます）: ",
+    paste(extra_label_items, collapse = ", "),
+    call. = FALSE
+  )
+}
+
+item_label_lookup <- item_labels[target_items]
+item_label_lookup[is.na(item_label_lookup)] <- target_items[is.na(item_label_lookup)]
+
+if (anyDuplicated(item_label_lookup) > 0) {
+  warning("item_labels の値が重複しています。凡例や軸でラベルが重複して表示されます。", call. = FALSE)
+}
+
+legend_labels <- unname(item_label_lookup)
+axis_labels <- setNames(item_label_lookup, target_items)
+label_replacements <- as.list(item_label_lookup)
+
+# 色ベクトルの作成
+make_palette <- function(colors, n) {
+  if (n <= 0) return(character(0))
+  if (length(colors) == 1) return(rep(colors, n))
+  grDevices::colorRampPalette(colors)(n)
+}
+
+risk_colors <- make_palette(c("#ffccd5", "#ff4d6d"), length(risk_factor_items))
+protective_colors <- make_palette(c("#f7fff5", "#1b9e77"), length(protective_factor_items))
+
+item_color_map <- tibble(
+  Item = c(risk_factor_items, protective_factor_items),
+  Color = c(risk_colors, protective_colors)
+) %>%
+  right_join(item_category_df, by = "Item") %>%
+  mutate(
+    Color = dplyr::coalesce(Color, "#bdbdbd")
+  )
+
+fill_values <- item_color_map$Color
+names(fill_values) <- item_color_map$Item
+
 # 必要な列のみを選択
 analysis_data <- data %>%
   select(all_of(required_columns)) %>%
-  # final_educationを教育年数に変換
-  mutate(final_education = case_when(
-    final_education == 1 ~ 9,
-    final_education == 2 ~ 12,
-    final_education == 3 ~ 14,
-    final_education == 4 ~ 14,
-    final_education == 5 ~ 16,
-    final_education == 6 ~ 18,
-    final_education == 7 ~ NA_real_,
-    TRUE ~ NA_real_
-  )) %>%
   # 数値列を数値型に変換
   mutate(across(all_of(c(target_items, covariates)), as.numeric)) %>%
   # クラスター列を因子型に変換
@@ -178,6 +269,11 @@ plot_data <- zscore_data %>%
   mutate(
     Item = factor(Item, levels = target_items),
     Cluster = factor(!!sym(cluster_column))
+  ) %>%
+  left_join(item_category_df, by = "Item") %>%
+  mutate(
+    Item_Label = dplyr::recode(as.character(Item), !!!label_replacements, .default = as.character(Item)),
+    Item_Label = factor(Item_Label, levels = item_label_lookup)
   )
 
 # クラスター別・項目別の統計を計算
@@ -188,6 +284,8 @@ summary_stats <- plot_data %>%
     Mean_ZScore = mean(ZScore, na.rm = TRUE),
     SD_ZScore = sd(ZScore, na.rm = TRUE),
     SE_ZScore = SD_ZScore / sqrt(N),  # 標準誤差
+    Category = first(Category),
+    Item_Label = first(Item_Label),
     .groups = 'drop'
   )
 
@@ -209,7 +307,13 @@ p1 <- ggplot(summary_stats, aes(x = Item, y = Mean_ZScore, fill = Item)) +
                 width = 0.25) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "black", alpha = 0.5) +
   facet_wrap(~ Cluster, nrow = 1) +
-  scale_fill_viridis_d(name = "Item") +
+  scale_fill_manual(
+    name = "Item",
+    values = fill_values,
+    breaks = target_items,
+    labels = legend_labels
+  ) +
+  scale_x_discrete(labels = axis_labels) +
   labs(
     title = plot_title,
     subtitle = paste("Error bars: Standard Error, Covariate adjustment:", paste(covariates, collapse = ", ")),
