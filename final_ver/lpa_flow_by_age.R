@@ -493,6 +493,30 @@ save_final_results <- function(df_final, original_file_path, output_dir, group_n
   output_path
 }
 
+save_group_subset_csv <- function(df_final, original_file_path, group_name) {
+  ensure_output_directory(LPA_OUTPUT_DIR)
+  base_name <- tools::file_path_sans_ext(basename(original_file_path))
+
+  if (nzchar(OUTPUT_PREFIX)) {
+    output_filename <- sprintf("%s_%s_%s_subset_with_class.csv", OUTPUT_PREFIX, base_name, group_name)
+  } else {
+    output_filename <- sprintf("%s_%s_subset_with_class.csv", base_name, group_name)
+  }
+
+  output_path <- file.path(LPA_OUTPUT_DIR, output_filename)
+
+  data_to_write <- df_final |>
+    dplyr::arrange(rlang::.data$row_id)
+
+  readr::write_csv(data_to_write, output_path)
+
+  if (SHOW_DETAILED_OUTPUT) {
+    cat(sprintf("[info] Group subset saved to: %s\n\n", normalizePath(output_path)))
+  }
+
+  output_path
+}
+
 analyze_age_by_cluster <- function(df_final, age_column, group_label) {
   cat(sprintf("[step] Age summary by cluster for %s...\n", group_label))
 
@@ -569,6 +593,7 @@ process_age_group <- function(data_with_id, selected_columns, file_path, group_c
 
   final_data <- assign_clusters_to_data(prepared$original, prepared$for_lpa, selected_model, AGE_COLUMN)
   output_path <- save_final_results(final_data, file_path, group_output_dir, group_name)
+  subset_path <- save_group_subset_csv(final_data, file_path, group_name)
   analyze_age_by_cluster(final_data, AGE_COLUMN, group_label)
 
   list(
@@ -578,6 +603,7 @@ process_age_group <- function(data_with_id, selected_columns, file_path, group_c
     selected_model = selected_model,
     final_data = final_data,
     output_path = output_path,
+    subset_path = subset_path,
     removed = prepared$removed
   )
 }
