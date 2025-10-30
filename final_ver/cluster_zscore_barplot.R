@@ -171,6 +171,8 @@ item_color_map <- tibble(
 
 fill_values <- item_color_map$Color
 names(fill_values) <- item_color_map$Item
+fill_values <- fill_values[target_items]
+fill_values[is.na(fill_values)] <- "#bdbdbd"
 
 # 必要な列のみを選択
 analysis_data <- data %>%
@@ -287,7 +289,12 @@ summary_stats <- plot_data %>%
     Category = first(Category),
     Item_Label = first(Item_Label),
     .groups = 'drop'
-  )
+  ) %>%
+  mutate(
+    Item = factor(as.character(Item), levels = target_items),
+    Item_Label = factor(as.character(Item_Label), levels = item_label_lookup)
+  ) %>%
+  arrange(Cluster, Item)
 
 # 統計結果を表示
 cat("\n=== クラスター別・項目別のZ-score統計 ===\n")
@@ -313,7 +320,7 @@ p1 <- ggplot(summary_stats, aes(x = Item, y = Mean_ZScore, fill = Item)) +
     breaks = target_items,
     labels = legend_labels
   ) +
-  scale_x_discrete(labels = axis_labels) +
+  scale_x_discrete(breaks = target_items, labels = axis_labels, drop = FALSE) +
   labs(
     title = plot_title,
     subtitle = paste("Error bars: Standard Error, Covariate adjustment:", paste(covariates, collapse = ", ")),
