@@ -19,16 +19,16 @@ INPUT_FILE <- "raw_data/dummy_data.csv"  # 分析したいCSVファイルのパ�
 # 分析に使用する列名を直接指定
 TARGET_COLUMNS <- c("542690_00", "542700_00", "542710_00", "542720_00", "542730_00")
 
-# ★★★ スケーリングの設定 ★★★
-# "zscore"（Zスコア標準化）、"minmax"、"minmax_trimmed" から選択
-SCALING_METHOD <- "zscore"
-
 # ★★★ クラスター数の設定 ★★★
-PROFILE_RANGE <- 1:5  # 比較するクラスター数の範囲
-FINAL_CLUSTERS <- 4   # 最終的に使用するクラスター数
+PROFILE_RANGE <- 1:3  # 比較するクラスター数の範囲
+FINAL_CLUSTERS <- 3  # 最終的に使用するクラスター数
+
+# ★★★ tidyLPAのモデル設定 ★★★
+# 1: 等分散・ゼロ共分散, 2: 等分散・等共分散, 3: 等分散・クラス別共分散,
+# 4: クラス別分散・ゼロ共分散, 5: クラス別分散・等共分散, 6: クラス別分散・クラス別共分散
+PROFILE_MODEL <- 6  # 使用するtidyLPAモデル番号（1-6など）
 
 # ★★★ 出力設定 ★★★
-LPA_OUTPUT_DIR <- "lpa"  # すべての出力ファイルを保存するディレクトリ
 OUTPUT_PREFIX <- ""  # 出力ファイル名の接頭辞（空文字の場合は元ファイル名ベース）
 SAVE_COMPARISON_TABLE <- TRUE  # 適合度比較表をCSVで保存するか
 COMPARISON_TABLE_FILENAME <- "lpa_comparison_table2.csv"  # 適合度比較表のファイル名
@@ -53,14 +53,6 @@ setup_packages <- function() {
   lapply(packages, library, character.only = TRUE)
   
   cat("✅ パッケージの読み込みが完了しました。\n\n")
-}
-
-#' 出力ディレクトリの作成
-#' @param dir_path 作成したいディレクトリ
-ensure_output_directory <- function(dir_path) {
-  if (!dir.exists(dir_path)) {
-    dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
-  }
 }
 
 # ---------------------------------------------------------------
@@ -119,70 +111,6 @@ select_lpa_variables <- function(data) {
 }
 
 # ---------------------------------------------------------------
-# 追加ユーティリティ: スケーリング処理
-# ---------------------------------------------------------------
-
-#' 特徴量のスケーリング
-#' @param df 数値列のみを含むデータフレーム
-#' @param method スケーリング手法（"zscore"/"minmax"/"minmax_trimmed"）
-apply_scaling_method <- function(df, method) {
-  method <- tolower(method)
-
-  if (!nrow(df) || !ncol(df)) {
-    return(df)
-  }
-
-  scale_minmax <- function(x) {
-    if (all(is.na(x))) {
-      return(rep(NA_real_, length(x)))
-    }
-    rng <- range(x, na.rm = TRUE)
-    if (!is.finite(rng[1]) || !is.finite(rng[2]) || diff(rng) == 0) {
-      return(rep(0.5, length(x)))
-    }
-    (x - rng[1]) / diff(rng)
-  }
-
-  scale_minmax_trimmed <- function(x) {
-    if (all(is.na(x))) {
-      return(rep(NA_real_, length(x)))
-    }
-    q05 <- stats::quantile(x, 0.05, na.rm = TRUE, names = FALSE, type = 7)
-    q95 <- stats::quantile(x, 0.95, na.rm = TRUE, names = FALSE, type = 7)
-    trimmed <- pmax(pmin(x, q95), q05)
-    rng <- range(trimmed, na.rm = TRUE)
-    if (!is.finite(rng[1]) || !is.finite(rng[2]) || diff(rng) == 0) {
-      return(rep(0.5, length(x)))
-    }
-    (trimmed - rng[1]) / diff(rng)
-  }
-
-  scale_zscore <- function(x) {
-    if (all(is.na(x))) {
-      return(rep(NA_real_, length(x)))
-    }
-    mu <- mean(x, na.rm = TRUE)
-    sigma <- stats::sd(x, na.rm = TRUE)
-    if (is.na(sigma) || sigma == 0) {
-      return(rep(0, length(x)))
-    }
-    (x - mu) / sigma
-  }
-
-  scaled_list <- switch(
-    method,
-    "minmax" = lapply(df, scale_minmax),
-    "minmax_trimmed" = lapply(df, scale_minmax_trimmed),
-    "zscore" = lapply(df, scale_zscore),
-    stop("❌ 未対応のスケーリング手法です: ", method)
-  )
-
-  scaled_df <- as.data.frame(scaled_list, optional = FALSE, stringsAsFactors = FALSE, check.names = FALSE)
-  names(scaled_df) <- names(df)
-  scaled_df
-}
-
-# ---------------------------------------------------------------
 # 3. LPA実行とモデル比較
 # ---------------------------------------------------------------
 
@@ -204,11 +132,9 @@ prepare_lpa_data <- function(data, selected_columns) {
     mutate(across(all_of(selected_columns), as.numeric)) %>%
     na.omit()
   
-  # スケーリングの実行
+  # Zスコアに標準化
   df_to_scale <- df_for_lpa %>% select(-row_id)
-  scaling_method <- tolower(SCALING_METHOD)
-  df_scaled <- apply_scaling_method(df_to_scale, scaling_method)
-  cat(paste("   スケーリング方法:", scaling_method, "\n"))
+  df_scaled <- as.data.frame(scale(df_to_scale))
   
   # row_idを再度結合
   df_analysis <- bind_cols(df_for_lpa %>% select(row_id), df_scaled)
@@ -229,6 +155,10 @@ prepare_lpa_data <- function(data, selected_columns) {
 #' @param profile_range クラスター数の範囲（設定変数から取得）
 #' @return LPAモデルと適合度指標
 run_lpa_models <- function(df_analysis, profile_range = PROFILE_RANGE) {
+  if (length(PROFILE_MODEL) != 1) {
+    stop("PROFILE_MODEL には単一のモデル番号を指定してください（例: PROFILE_MODEL <- 1）。")
+  }
+
   if (SHOW_DETAILED_OUTPUT) {
     cat(paste("🧮 ", min(profile_range), "から", max(profile_range), "クラスターのLPAを実行中...\n", sep=""))
     cat("⏳ BLRTの計算を含むため、時間がかかる場合があります。\n\n")
@@ -238,6 +168,7 @@ run_lpa_models <- function(df_analysis, profile_range = PROFILE_RANGE) {
   cat("🔍 分析データの確認:\n")
   cat(paste("   行数:", nrow(df_analysis), "、列数:", ncol(df_analysis), "\n"))
   cat(paste("   profile_range:", paste(profile_range, collapse = ", "), "\n"))
+  cat(paste("   使用モデル番号 (tidyLPA):", paste(PROFILE_MODEL, collapse = ", "), "\n"))
   
   # LPA実行（row_idを除外）
   analysis_data <- df_analysis %>% select(-row_id)
@@ -246,8 +177,8 @@ run_lpa_models <- function(df_analysis, profile_range = PROFILE_RANGE) {
   lpa_models <- estimate_profiles(
     analysis_data,
     n_profiles = profile_range,
-    boot_for_p = TRUE,  # BLRT p-valueを計算
-    models= 1
+    models = PROFILE_MODEL,
+    boot_for_p = TRUE  # BLRT p-valueを計算
   )
   
   cat("✅ LPA計算完了。\n")
@@ -264,9 +195,12 @@ create_comparison_table <- function(lpa_models) {
   cat("📊 適合度指標の比較表を作成中...\n")
   
   tryCatch({
-    # 基本的な適合度指標を取得
-    fit_indices <- get_fit(lpa_models)
+  # 基本的な適合度指標を取得
+  fit_indices <- get_fit(lpa_models)
     cat("✅ 適合度指標の取得完了。\n")
+
+  # tidyLPAモデル番号を列として追加（複数指定時は先頭を使用）
+  fit_indices$Model <- PROFILE_MODEL[1]
 
 
     # ===============================================================
@@ -304,58 +238,61 @@ create_comparison_table <- function(lpa_models) {
       
       # 結果（数値ベクトル）の4番目がp値
       fit_indices$VLMR_p[k] <- lmr_result[4]
+      cat(names(lmr_result))
+      cat(lmr_result)
+      cat("ddddddddddddddddddddddd")
     }
     cat("✅ VLMR p値の計算完了。\n")
     
     # 各クラスター数の実際の所属割合を計算
     cat("📊 各クラスター数のクラス所属割合を計算中...\n")
     
-    class_proportions_list <- vector("list", length(lpa_models))
-    fit_classes <- fit_indices$Classes
-
+    class_proportions_list <- list()
+    
     # 各クラスター数について実際の所属割合を計算
-    for (i in seq_along(lpa_models)) {
+    for(i in seq_along(lpa_models)) {
+      # tidyLPAモデル名から正しいクラスター数を抽出
       model_name <- names(lpa_models)[i]
-      profiles_num <- if (length(fit_classes) >= i) fit_classes[i] else NA_real_
-
-      if (SHOW_DETAILED_OUTPUT) {
-        cat(paste("   処理中:", model_name, "-> クラスター数候補:", profiles_num, "\n"))
+  profiles_num <- suppressWarnings(as.numeric(sub(".*_(\\\\d+)$", "\\1", model_name)))
+      if (is.na(profiles_num)) {
+        profiles_num <- fit_indices$Classes[i]
       }
-
-      class_proportions_list[[i]] <- tryCatch({
+      
+      if (SHOW_DETAILED_OUTPUT) {
+        cat(paste("   処理中:", model_name, "-> クラスター数:", profiles_num, "\n"))
+      }
+      
+      tryCatch({
+        # 各クラスター数モデルからデータを取得
         model_data <- get_data(lpa_models[[i]])
+        if (!is.null(model_data) && "Class" %in% colnames(model_data)) {
+          class_stats <- model_data %>%
+            count(Class) %>%
+            mutate(Percentage = round(n / sum(n) * 100))
+          
+          proportions_text <- paste(class_stats$Percentage, collapse = "/")
+          
+          model_number <- suppressWarnings(as.numeric(sub("model_(\\\\d+)_.*", "\\1", model_name)))
+          if (is.na(model_number)) {
+            model_number <- PROFILE_MODEL[1]
+          }
 
-        if (is.null(model_data) || !"Class" %in% colnames(model_data)) {
-          stop("Class 列を含むデータが取得できませんでした。")
-        }
-
-        if (is.na(profiles_num) || !is.finite(profiles_num)) {
-          profiles_num <- length(unique(model_data$Class))
-        }
-
-        class_stats <- model_data %>%
-          dplyr::count(Class, name = "N") %>%
-          dplyr::arrange(Class) %>%
-          dplyr::mutate(
-            Percentage = round(N / sum(N) * 100, 1),
-            Class = as.integer(Class)
+          class_proportions_list[[i]] <- data.frame(
+            Model = model_number,
+            Profiles = profiles_num,
+            `% in each class` = proportions_text,
+            stringsAsFactors = FALSE
           )
-
-        proportions_text <- paste(class_stats$Percentage, collapse = "/")
-
-        if (SHOW_DETAILED_OUTPUT) {
-          cat(paste("   ", profiles_num, "クラスター: ", proportions_text, "\n"))
+          
+          if (SHOW_DETAILED_OUTPUT) {
+            cat(paste("   ", profiles_num, "クラスター: ", proportions_text, "\n"))
+          }
         }
-
-        data.frame(
-          Profiles = as.integer(profiles_num),
-          `% in each class` = proportions_text,
-          stringsAsFactors = FALSE
-        )
       }, error = function(e) {
-        cat(paste("⚠️ クラスター割合算出でエラー (", model_name, "): ", e$message, "\n", sep = ""))
-        data.frame(
-          Profiles = as.integer(profiles_num),
+        cat(paste("⚠️ ", profiles_num, "クラスターの割合計算でエラー:", e$message, "\n"))
+        class_proportions_list[[i]] <- data.frame(
+          Model = PROFILE_MODEL[1],
+          Profiles = profiles_num,
           `% in each class` = "N/A",
           stringsAsFactors = FALSE
         )
@@ -365,60 +302,33 @@ create_comparison_table <- function(lpa_models) {
     # すべての所属割合を結合
     if (length(class_proportions_list) > 0) {
       class_proportions <- do.call(rbind, class_proportions_list)
-      names(class_proportions)[2] <- "% in each class"
+      colnames(class_proportions) <- c("Model", "Profiles", "% in each class")
     } else {
       class_proportions <- data.frame(
+        Model = fit_indices$Model,
         Profiles = fit_indices$Classes,
         `% in each class` = "N/A"
       )
     }
     
     # 最終的な比較表を作成
-    rename_map <- c(
-      Classes = "Profiles",
-      LogLik = "Log-likelihood",
-      SABIC = "Sample-Size Adjusted BIC",
-      BLRT_p = "BLRT p-value",
-      VLMR_p = "VLMR p-value",
-      prob_min = "Prob Min",
-      prob_max = "Prob Max",
-      n_min = "N Min",
-      n_max = "N Max",
-      BLRT_val = "BLRT Value"
-    )
-    common_cols <- intersect(names(rename_map), names(fit_indices))
-
     final_comparison_table <- fit_indices %>%
-      dplyr::rename_with(
-        .cols = dplyr::all_of(common_cols),
-        .fn = ~ unname(rename_map[.x])
+      rename(
+        Profiles = Classes,
+        `Log-likelihood` = LogLik,
+        `Sample-Size Adjusted BIC` = SABIC,
+        `BLRT p-value` = BLRT_p,
+        `VLMR p-value` = VLMR_p
       ) %>%
-      dplyr::left_join(class_proportions, by = "Profiles") %>%
-      dplyr::mutate(
-        dplyr::across(
-          tidyselect::any_of(c("Log-likelihood", "AIC", "AWE", "BIC", "CAIC", "CLC", "KIC", "Sample-Size Adjusted BIC", "ICL")),
-          ~ round(.x, 2)
-        ),
-        dplyr::across(
-          tidyselect::any_of(c("Entropy", "BLRT p-value", "VLMR p-value", "Prob Min", "Prob Max")),
-          ~ round(.x, 3)
-        ),
-        dplyr::across(tidyselect::any_of(c("BLRT Value")), ~ round(.x, 2)),
-        dplyr::across(
-          tidyselect::any_of(c("Profiles", "Parameters", "N Min", "N Max")),
-          ~ as.integer(.x)
-        )
+      select(
+        Model, Profiles, `Log-likelihood`, AIC, BIC, `Sample-Size Adjusted BIC`,
+        Entropy, `BLRT p-value`, `VLMR p-value`
+      ) %>%
+      left_join(class_proportions, by = c("Model", "Profiles")) %>%
+      mutate(
+        across(c(`Log-likelihood`, AIC, BIC, `Sample-Size Adjusted BIC`), ~round(.x, 2)),
+        across(c(Entropy, `BLRT p-value`, `VLMR p-value`), ~round(.x, 3))
       )
-
-    desired_order <- c(
-      "Model", "Profiles", "Log-likelihood", "AIC", "BIC", "Sample-Size Adjusted BIC", "AWE", "CAIC", "CLC", "KIC", "ICL",
-      "Entropy", "BLRT p-value", "VLMR p-value", "BLRT Value",
-      "Prob Min", "Prob Max", "N Min", "N Max", "Parameters",
-      "% in each class"
-    )
-
-    final_comparison_table <- final_comparison_table %>%
-      dplyr::select(tidyselect::any_of(desired_order))
     
     cat("✅ 実際の所属割合を含む比較表の作成完了。\n\n")
     return(final_comparison_table)
@@ -433,10 +343,6 @@ create_comparison_table <- function(lpa_models) {
 #' @description 比較表を表示し、設定に応じてCSVファイルとして保存
 #' @param comparison_table 比較表
 display_and_save_comparison <- function(comparison_table) {
-  if (is.null(comparison_table)) {
-    stop("❌ comparison_table が NULL です。create_comparison_table() の処理を確認してください。")
-  }
-
   if (SHOW_DETAILED_OUTPUT) {
     cat("📈 適合度指標の比較表:\n")
     cat("--------------------------------------------------\n")
@@ -453,14 +359,9 @@ display_and_save_comparison <- function(comparison_table) {
   
   # CSVファイルとして保存（設定に応じて）
   if (SAVE_COMPARISON_TABLE) {
-    ensure_output_directory(LPA_OUTPUT_DIR)
-    comparison_output_path <- file.path(LPA_OUTPUT_DIR, COMPARISON_TABLE_FILENAME)
-    if (!inherits(comparison_table, "data.frame")) {
-      stop("❌ comparison_table は data.frame/tibble ではありません。write_csv() に渡す前に構造を確認してください。")
-    }
-    write_csv(comparison_table, comparison_output_path)
+    write_csv(comparison_table, COMPARISON_TABLE_FILENAME)
     if (SHOW_DETAILED_OUTPUT) {
-  cat(paste("💾 適合度比較表が '", normalizePath(comparison_output_path), "' として保存されました。\n", sep=""))
+      cat(paste("💾 適合度比較表が '", COMPARISON_TABLE_FILENAME, "' として保存されました。\n", sep=""))
       cat(paste("   📊 クラス所属割合（% in each class）を含む比較表が保存されました。\n"))
       cat(paste("   📋 含まれる列: ", paste(colnames(comparison_table), collapse = ", "), "\n\n"))
     }
@@ -500,16 +401,23 @@ get_selected_model <- function(lpa_models, n_clusters) {
   model_names <- names(lpa_models)
   cat(paste("🔍 利用可能なモデル名:", paste(model_names, collapse = ", "), "\n"))
   
-  # tidyLPAの命名規則（model_{モデル番号}_class_{クラス数}）に対応
-  model_index <- grep(paste0("_class_", n_clusters, "$"), model_names)
+  # tidyLPAの命名規則に従ってモデルを検索
+  target_pattern <- paste0("model_", PROFILE_MODEL[1], "_class_", n_clusters)
+  model_index <- which(model_names == target_pattern)
   
   if (length(model_index) == 0) {
-    stop(paste("❌ ", n_clusters, "クラスターのモデルが見つかりません。利用可能なモデル名: ", 
-               paste(model_names, collapse = ", "), sep=""))
+    # 代替パターンを試行
+    alt_patterns <- c(
+      as.character(n_clusters),
+      paste0("class_", n_clusters),
+      paste0(n_clusters, "_class")
+    )
+    
+    for (pattern in alt_patterns) {
+      model_index <- which(model_names == pattern)
+      if (length(model_index) > 0) break
+    }
   }
-  
-  # 同じクラス数のモデルが複数ある場合は最初のものを採用
-  model_index <- model_index[1]
   
   if (length(model_index) == 0) {
     stop(paste("❌ ", n_clusters, "クラスターのモデルが見つかりません。利用可能なモデル名: ", 
@@ -634,8 +542,7 @@ save_final_results <- function(df_final, original_file_path) {
   }
   
   # 出力ファイル名を生成
-  output_dir <- LPA_OUTPUT_DIR
-  ensure_output_directory(output_dir)
+  output_dir <- dirname(original_file_path)
   base_name <- tools::file_path_sans_ext(basename(original_file_path))
   
   if (OUTPUT_PREFIX != "") {
@@ -651,7 +558,7 @@ save_final_results <- function(df_final, original_file_path) {
   
   if (SHOW_DETAILED_OUTPUT) {
     cat(paste("✅ クラスター情報付きファイルが保存されました。\n"))
-    cat(paste("   📁 保存先: ", normalizePath(output_path), "\n\n"))
+    cat(paste("   📁 保存先: ", output_path, "\n\n"))
   }
   
   return(output_path)
@@ -725,9 +632,6 @@ main_lpa_flow <- function() {
   
   # 1. パッケージセットアップ
   setup_packages()
-
-  # 出力ディレクトリを事前に用意
-  ensure_output_directory(LPA_OUTPUT_DIR)
   
   # 2. データ読み込み
   data_info <- load_data()
