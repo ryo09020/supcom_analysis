@@ -36,16 +36,95 @@ df_time1 <- read_csv(file_time1)
 df_time2 <- read_csv(file_time2)
 
 
+# 3.1 必須列の存在チェック
+required_cols_time1 <- c(id_column_name, class_column_name)
+missing_time1 <- setdiff(required_cols_time1, names(df_time1))
+if (length(missing_time1) > 0) {
+  stop(
+    paste0(
+      "time1 データに必要な列が見つかりません: ",
+      paste(missing_time1, collapse = ", " )
+    ),
+    call. = FALSE
+  )
+}
+
+if (!(id_column_name %in% names(df_time2))) {
+  stop(
+    paste0("time2 データに列 '", id_column_name, "' が見つかりません。"),
+    call. = FALSE
+  )
+}
+
+# 3.2 ID・クラス列の整形（型と余白を揃える）
+normalize_id <- function(x) {
+  x |>
+    as.character() |>
+    stringr::str_trim() |>
+    dplyr::na_if("")
+}
+
+df_time1 <- df_time1 |>
+  mutate(
+    !!id_column_name := normalize_id(.data[[id_column_name]]),
+    !!class_column_name := ifelse(
+      is.na(.data[[class_column_name]]),
+      NA,
+      .data[[class_column_name]]
+    )
+  )
+
+df_time2 <- df_time2 |>
+  mutate(!!id_column_name := normalize_id(.data[[id_column_name]]))
+
+# 3.3 IDの欠損を除外（連結できないため）
+df_time1 <- df_time1 |>
+  filter(!is.na(.data[[id_column_name]]), !is.na(.data[[class_column_name]]))
+
+df_time2 <- df_time2 |>
+  filter(!is.na(.data[[id_column_name]]))
+
 # 4. 第一期のデータからIDとclassのみを抽出
 # all_of() を使うことで、上記で指定した変数名（文字列）で列を選択できます
 df_time1_class_info <- df_time1 %>%
   select(all_of(id_column_name), all_of(class_column_name)) %>%
-  distinct() # IDの重複がある場合に備えて、ユニークな組み合わせのみにする
+  distinct()
+
+# 4.1 同じIDで複数のクラスが存在しないか確認
+conflicting_ids <- df_time1_class_info %>%
+  group_by(.data[[id_column_name]]) %>%
+  summarise(n_class = n_distinct(.data[[class_column_name]]), .groups = "drop") %>%
+  filter(n_class > 1)
+
+if (nrow(conflicting_ids) > 0) {
+  stop(
+    paste0(
+      "time1 データで複数のクラスに属している ID が存在します: ",
+      paste(conflicting_ids[[id_column_name]], collapse = ", ")
+    ),
+    call. = FALSE
+  )
+}
 
 # 5. 第二期のデータに第一期のclass情報を結合
 # (id_column_name の値が一致する行をT1とT2で探して結合します)
 df_time2_with_class <- df_time2 %>%
   left_join(df_time1_class_info, by = id_column_name)
+
+# 5.1 結合できなかったIDの件数を表示
+unmatched_ids <- df_time2_with_class %>%
+  filter(is.na(.data[[class_column_name]])) %>%
+  pull(.data[[id_column_name]])
+
+if (length(unmatched_ids) > 0) {
+  message(
+    paste0(
+      "⚠️ time2 に存在するが time1 でクラス情報が見つからなかった ID が ",
+      length(unmatched_ids),
+      " 件あります。"
+    )
+  )
+}
 
 
 # 6. 結果の確認

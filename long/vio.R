@@ -19,6 +19,9 @@ file_time2 <- "time2_with_class.csv" # 前回スクリプトで作成したフ�
 # 2-2. 読み込む列名の指定
 class_column <- "class" 
 
+# 2-2-1. 出力先ファイル名（PNG）
+output_plot_file <- "longitudinal_violin_plot_custom_labels_colored.png"
+
 # 2-3. ★★★ 分析で扱う「項目キー（表示順）」を指定 ★★★
 # ここで指定した順序がグラフの表示順になります。
 target_items <- c("subscale_A", "subscale_B", "total_score")
@@ -260,6 +263,13 @@ violin_plot <- ggplot(df_long, aes(x = class, y = value, fill = time)) +
 # 7. プロットの表示
 print(violin_plot)
 
-# 8. (オプション) プロットを画像ファイルとして保存
-# ggsave("longitudinal_violin_plot_custom_labels.png", plot = violin_plot, width = 12, height = 7, dpi = 300)
-# print("プロットを 'longitudinal_violin_plot_custom_labels.png' として保存しました。")
+# 8. プロットをPNG画像として保存（カラー表示）
+ggsave(
+  filename = output_plot_file,
+  plot = violin_plot,
+  width = 12,
+  height = 7,
+  dpi = 300,
+  bg = "white"
+)
+cat(paste0("🖼️ プロットを '", output_plot_file, "' として保存しました。\n"))
