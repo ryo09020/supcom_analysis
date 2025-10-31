@@ -29,7 +29,20 @@ item_labels <- c(
   total_score = "Total Score"
 )
 
-# 2-5. Output settings
+# 2-5. Column mappings for each timepoint (named by target_items)
+time1_item_map <- c(
+  subscale_A = "subscale_A",
+  subscale_B = "subscale_B",
+  total_score = "total_score"
+)
+
+time2_item_map <- c(
+  subscale_A = "subscale_A",
+  subscale_B = "subscale_B",
+  total_score = "total_score"
+)
+
+# 2-6. Output settings
 output_plot_file <- "spaghetti_transition_plot.png"
 
 time_labels <- c("Time 1", "Time 2")
@@ -55,6 +68,67 @@ check_required_columns <- function(df, required_cols, dataset_label) {
   }
 }
 
+validate_item_map <- function(item_map, target_items, dataset_label) {
+  if (length(item_map) == 0) {
+    stop(paste0(dataset_label, ": item_map is empty."), call. = FALSE)
+  }
+  if (is.null(names(item_map)) || any(names(item_map) == "")) {
+    stop(
+      paste0(dataset_label, ": item_map must be a named vector keyed by target_items."),
+      call. = FALSE
+    )
+  }
+  missing_keys <- setdiff(target_items, names(item_map))
+  if (length(missing_keys) > 0) {
+    stop(
+      paste0(dataset_label, ": item_map missing keys -> ", paste(missing_keys, collapse = ", ")),
+      call. = FALSE
+    )
+  }
+  selected_map <- item_map[target_items]
+  if (any(is.na(selected_map))) {
+    stop(paste0(dataset_label, ": item_map contains NA values."), call. = FALSE)
+  }
+  duplicate_sources <- selected_map[duplicated(selected_map)]
+  if (length(duplicate_sources) > 0) {
+    stop(
+      paste0(dataset_label, ": item_map reuses source columns -> ", paste(unique(duplicate_sources), collapse = ", ")),
+      call. = FALSE
+    )
+  }
+  selected_map
+}
+
+rename_columns_with_map <- function(df, selected_map) {
+  renamed_df <- df
+  for (idx in seq_along(selected_map)) {
+    new_name <- names(selected_map)[idx]
+    old_name <- selected_map[[idx]]
+    if (identical(new_name, old_name)) {
+      next
+    }
+    matching_cols <- names(renamed_df) == old_name
+    if (!any(matching_cols)) {
+      stop(paste0("Column '", old_name, "' not found in data."), call. = FALSE)
+    }
+    names(renamed_df)[matching_cols] <- new_name
+  }
+  renamed_df
+}
+
+coerce_numeric_columns <- function(df, cols, dataset_label) {
+  df[cols] <- lapply(df[cols], function(col) {
+    if (is.list(col)) {
+      stop(paste0(dataset_label, ": column is list-typed; convert it before plotting."), call. = FALSE)
+    }
+    if (is.factor(col)) {
+      col <- as.character(col)
+    }
+    suppressWarnings(as.numeric(col))
+  })
+  df
+}
+
 # ------------------------------------------------------------------
 # 3. Data import and preparation
 # ------------------------------------------------------------------
@@ -63,20 +137,30 @@ cat("Reading data...\n")
 df_t1_raw <- readr::read_csv(file_time1, show_col_types = FALSE)
 df_t2_raw <- readr::read_csv(file_time2, show_col_types = FALSE)
 
-check_required_columns(df_t1_raw, c(id_column, class_column, target_items), "time1")
-check_required_columns(df_t2_raw, c(id_column, target_items), "time2")
+selected_time1_map <- validate_item_map(time1_item_map, target_items, "time1")
+selected_time2_map <- validate_item_map(time2_item_map, target_items, "time2")
+
+check_required_columns(df_t1_raw, c(id_column, class_column, selected_time1_map), "time1")
+check_required_columns(df_t2_raw, c(id_column, selected_time2_map), "time2")
+
+df_t1_standardized <- rename_columns_with_map(df_t1_raw, selected_time1_map)
+df_t2_standardized <- rename_columns_with_map(df_t2_raw, selected_time2_map)
+
+df_t1_standardized <- coerce_numeric_columns(df_t1_standardized, target_items, "time1")
+df_t2_standardized <- coerce_numeric_columns(df_t2_standardized, target_items, "time2")
 
 # Normalize IDs
-df_t1 <- df_t1_raw |>
-  dplyr::mutate(
-    !!id_column := normalize_id(.data[[id_column]]),
-    !!class_column := .data[[class_column]]
-  ) |>
-  dplyr::filter(!is.na(.data[[id_column]]), !is.na(.data[[class_column]]))
+df_t1 <- df_t1_standardized |>
+  dplyr::mutate(dplyr::across(dplyr::all_of(id_column), normalize_id)) |>
+  dplyr::mutate(dplyr::across(dplyr::all_of(class_column), ~ as.character(.x))) |>
+  dplyr::filter(
+    !is.na(rlang::.data[[id_column]]),
+    !is.na(rlang::.data[[class_column]])
+  )
 
-df_t2 <- df_t2_raw |>
-  dplyr::mutate(!!id_column := normalize_id(.data[[id_column]])) |>
-  dplyr::filter(!is.na(.data[[id_column]]))
+df_t2 <- df_t2_standardized |>
+  dplyr::mutate(dplyr::across(dplyr::all_of(id_column), normalize_id)) |>
+  dplyr::filter(!is.na(rlang::.data[[id_column]]))
 
 # Retain only IDs present at both timepoints
 common_ids <- intersect(df_t1[[id_column]], df_t2[[id_column]])
@@ -87,10 +171,10 @@ if (length(common_ids) == 0) {
 cat(paste0("Overlapping IDs: ", length(common_ids), "\n"))
 
 df_t1_common <- df_t1 |>
-  dplyr::filter(.data[[id_column]] %in% common_ids)
+  dplyr::filter(rlang::.data[[id_column]] %in% common_ids)
 
 df_t2_common <- df_t2 |>
-  dplyr::filter(.data[[id_column]] %in% common_ids)
+  dplyr::filter(rlang::.data[[id_column]] %in% common_ids)
 
 # Use the class assignments from time1
 class_lookup <- df_t1_common |>
@@ -123,7 +207,7 @@ combined_long <- combined_long |>
     item_key = factor(item_key, levels = target_items),
     item_label = item_labels[as.character(item_key)],
     time = factor(time, levels = time_labels),
-    class = factor(.data[[class_column]])
+    class = factor(rlang::.data[[class_column]])
   ) |>
   dplyr::filter(!is.na(value), !is.na(class))
 
