@@ -47,6 +47,9 @@ output_plot_file <- "spaghetti_transition_plot.png"
 
 time_labels <- c("Time 1", "Time 2")
 
+id_sym <- rlang::sym(id_column)
+class_sym <- rlang::sym(class_column)
+
 # ------------------------------------------------------------------
 # Helper utilities
 # ------------------------------------------------------------------
@@ -149,18 +152,22 @@ df_t2_standardized <- rename_columns_with_map(df_t2_raw, selected_time2_map)
 df_t1_standardized <- coerce_numeric_columns(df_t1_standardized, target_items, "time1")
 df_t2_standardized <- coerce_numeric_columns(df_t2_standardized, target_items, "time2")
 
-# Normalize IDs
+# Normalize IDs and drop missing
 df_t1 <- df_t1_standardized |>
-  dplyr::mutate(dplyr::across(dplyr::all_of(id_column), normalize_id)) |>
-  dplyr::mutate(dplyr::across(dplyr::all_of(class_column), ~ as.character(.x))) |>
+  dplyr::mutate(
+    !!id_sym := normalize_id(!!id_sym),
+    !!class_sym := as.character(!!class_sym)
+  ) |>
   dplyr::filter(
-    !is.na(rlang::.data[[id_column]]),
-    !is.na(rlang::.data[[class_column]])
+    !is.na(!!id_sym),
+    !is.na(!!class_sym)
   )
 
 df_t2 <- df_t2_standardized |>
-  dplyr::mutate(dplyr::across(dplyr::all_of(id_column), normalize_id)) |>
-  dplyr::filter(!is.na(rlang::.data[[id_column]]))
+  dplyr::mutate(
+    !!id_sym := normalize_id(!!id_sym)
+  ) |>
+  dplyr::filter(!is.na(!!id_sym))
 
 # Retain only IDs present at both timepoints
 common_ids <- intersect(df_t1[[id_column]], df_t2[[id_column]])
@@ -171,10 +178,10 @@ if (length(common_ids) == 0) {
 cat(paste0("Overlapping IDs: ", length(common_ids), "\n"))
 
 df_t1_common <- df_t1 |>
-  dplyr::filter(rlang::.data[[id_column]] %in% common_ids)
+  dplyr::filter(!!id_sym %in% common_ids)
 
 df_t2_common <- df_t2 |>
-  dplyr::filter(rlang::.data[[id_column]] %in% common_ids)
+  dplyr::filter(!!id_sym %in% common_ids)
 
 # Use the class assignments from time1
 class_lookup <- df_t1_common |>
@@ -207,9 +214,9 @@ combined_long <- combined_long |>
     item_key = factor(item_key, levels = target_items),
     item_label = item_labels[as.character(item_key)],
     time = factor(time, levels = time_labels),
-    class = factor(rlang::.data[[class_column]])
+    class = factor(!!class_sym)
   ) |>
-  dplyr::filter(!is.na(value), !is.na(class))
+  dplyr::filter(!is.na(value), !is.na(!!class_sym))
 
 if (nrow(combined_long) == 0) {
   stop("No valid (non-missing) values for overlapping IDs.", call. = FALSE)
