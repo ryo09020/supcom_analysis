@@ -166,13 +166,21 @@ prepare_timepoint_data <- function(file_path, time_label, item_map, target_items
     if (is.list(col)) {
       stop(paste0(time_label, ": ", deparse(substitute(col)), " 列がリスト型です。前処理でベクトル化してください。"), call. = FALSE)
     }
-    suppressWarnings(as.numeric(col))
+    if (is.factor(col)) {
+      col <- as.character(col)
+    }
+    type <- typeof(col)
+    if (!type %in% c("double", "integer", "character", "logical")) {
+      stop(paste0(time_label, ": 項目列にサポートされていない型が含まれています (", type, ")。"), call. = FALSE)
+    }
+    col
   })
   if (!class_column %in% names(df_standardized)) {
     stop(paste0(time_label, ": クラス列 '", class_column, "' がデータ内に存在しません。"), call. = FALSE)
   }
   df_standardized[[class_column]] <- as.character(df_standardized[[class_column]])
   df_standardized[["time"]] <- time_label
+  df_standardized[[".origin"]] <- time_label
   cat(sprintf("✅ %s: 項目名を統一しました。\n", time_label))
   df_standardized
 }
