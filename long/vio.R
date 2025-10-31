@@ -151,6 +151,23 @@ prepare_timepoint_data <- function(file_path, time_label, item_map, target_items
     )
   }
   df_standardized <- rename_columns_with_map(df_raw, selected_map)
+  missing_after_rename <- setdiff(target_items, names(df_standardized))
+  if (length(missing_after_rename) > 0) {
+    stop(
+      paste0(
+        time_label,
+        ": 項目キーに対応する列のリネーム後の存在確認で失敗しました: ",
+        paste(missing_after_rename, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+  df_standardized[target_items] <- lapply(df_standardized[target_items], function(col) {
+    if (is.list(col)) {
+      stop(paste0(time_label, ": ", deparse(substitute(col)), " 列がリスト型です。前処理でベクトル化してください。"), call. = FALSE)
+    }
+    suppressWarnings(as.numeric(col))
+  })
   df_standardized[["time"]] <- time_label
   cat(sprintf("✅ %s: 項目名を統一しました。\n", time_label))
   df_standardized
@@ -190,7 +207,7 @@ df_long <- df_combined %>%
       labels = item_display_labels  # 表示するラベル
     )
   ) %>%
-  filter(!is.na(value)) 
+  filter(!is.na(value), !is.na(class))
 
 # 6. プロットの作成
 violin_plot <- ggplot(df_long, aes(x = class, y = value, fill = time)) +
