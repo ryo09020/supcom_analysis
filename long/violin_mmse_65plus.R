@@ -111,14 +111,16 @@ prepare_timepoint_data <- function(file_path, time_label, item_map, target_items
   check_required_columns(df_raw, c(id_column, class_column, age_column), time_label)
 
   df_norm <- df_raw |>
-    dplyr::mutate(dplyr::across(dplyr::all_of(id_column), ~ normalize_id(.x))) |>
-    dplyr::mutate(dplyr::across(dplyr::all_of(class_column), ~ as.character(.x))) |>
-    dplyr::mutate(dplyr::across(dplyr::all_of(age_column), ~ suppressWarnings(as.numeric(.x)))) |>
-    dplyr::filter(
-      !is.na(rlang::.data[[id_column]]),
-      !is.na(rlang::.data[[class_column]]),
-      !is.na(rlang::.data[[age_column]])
+    dplyr::mutate(
+      dplyr::across(dplyr::all_of(id_column), normalize_id),
+      dplyr::across(dplyr::all_of(class_column), ~ as.character(.x)),
+      dplyr::across(dplyr::all_of(age_column), ~ suppressWarnings(as.numeric(.x)))
     )
+
+  keep_rows <- !is.na(df_norm[[id_column]]) &
+    !is.na(df_norm[[class_column]]) &
+    !is.na(df_norm[[age_column]])
+  df_norm <- df_norm[keep_rows, , drop = FALSE]
 
   selected_map <- validate_item_map(item_map, target_items, time_label)
   required_columns <- unique(c(selected_map))
@@ -136,8 +138,7 @@ prepare_timepoint_data <- function(file_path, time_label, item_map, target_items
     suppressWarnings(as.numeric(col))
   })
 
-  df_standardized <- df_standardized |>
-    dplyr::filter(rlang::.data[[age_column]] >= age_threshold)
+  df_standardized <- df_standardized[which(df_standardized[[age_column]] >= age_threshold), , drop = FALSE]
 
   if (nrow(df_standardized) == 0) {
     stop(paste0(time_label, ": no records meet the age threshold."), call. = FALSE)
@@ -205,11 +206,8 @@ if (length(common_ids) == 0) {
 
 message(sprintf("Overlapping IDs (65+): %d", length(common_ids)))
 
-df_t1_common <- df_t1 |>
-  dplyr::filter(rlang::.data[[id_column]] %in% common_ids)
-
-df_t2_common <- df_t2 |>
-  dplyr::filter(rlang::.data[[id_column]] %in% common_ids)
+df_t1_common <- df_t1[df_t1[[id_column]] %in% common_ids, , drop = FALSE]
+df_t2_common <- df_t2[df_t2[[id_column]] %in% common_ids, , drop = FALSE]
 
 # Bind long format
 df_combined <- dplyr::bind_rows(df_t1_common, df_t2_common)
@@ -222,15 +220,16 @@ mmse_long <- df_combined |>
     values_to = "value"
   ) |>
   dplyr::mutate(
-    class = factor(rlang::.data[[class_column]]),
     time = factor(time, levels = time_levels),
     item_name = factor(
       item_name,
       levels = mmse_items,
       labels = item_display_labels
     )
-  ) |>
-  dplyr::filter(!is.na(value), !is.na(class))
+  )
+
+mmse_long <- mmse_long[!is.na(mmse_long$value) & !is.na(mmse_long[[class_column]]), , drop = FALSE]
+mmse_long$class_plot <- factor(mmse_long[[class_column]])
 
 if (nrow(mmse_long) == 0) {
   stop("No valid MMSE values remain after filtering.", call. = FALSE)
@@ -242,7 +241,7 @@ if (nrow(mmse_long) == 0) {
 
 message("Generating MMSE violin plot (65+)...")
 
-mmse_violin_plot <- ggplot(mmse_long, aes(x = class, y = value, fill = time)) +
+mmse_violin_plot <- ggplot(mmse_long, aes(x = class_plot, y = value, fill = time)) +
   geom_violin(position = position_dodge(width = 0.9), alpha = 0.7, trim = FALSE) +
   geom_boxplot(
     width = 0.1,
@@ -254,7 +253,7 @@ mmse_violin_plot <- ggplot(mmse_long, aes(x = class, y = value, fill = time)) +
   labs(
     title = "MMSE Longitudinal Comparison (65+)",
     subtitle = paste0(time1_label, " vs ", time2_label),
-    x = "Class",
+  x = "Class",
     y = "MMSE Score",
     fill = "Timepoint"
   ) +
