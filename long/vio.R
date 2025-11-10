@@ -19,8 +19,11 @@ file_time2 <- "time2_with_class.csv" # 前回スクリプトで作成したフ�
 # 2-2. 読み込む列名の指定
 class_column <- "class" 
 
-# 2-2-1. 出力先ファイル名（PNG）
-output_plot_file <- "longitudinal_violin_plot_custom_labels_colored.png"
+# 2-2-1. 出力先ディレクトリとファイル名
+output_dir <- "longitudinal_outputs"         # すべての結果を格納するディレクトリ
+output_violin_file <- "longitudinal_violin_plot_custom_labels_colored.png"
+output_boxplot_file <- "longitudinal_boxplot_custom_labels_colored.png"
+output_stats_file <- "longitudinal_summary_stats.csv"
 
 # 2-3. ★★★ 分析で扱う「項目キー（表示順）」を指定 ★★★
 # ここで指定した順序がグラフの表示順になります。
@@ -205,31 +208,32 @@ df_long <- df_combined %>%
     values_to = "value"
   ) %>%
   mutate(
-    class = factor(!!sym(class_column)), 
+    item_key = item_name,
+    class = factor(!!sym(class_column)),
     time = factor(time, levels = time_levels),
-    
-    # ★★★ 項目名をマッピング（対応表）に基づいて「表示用ラベル」に変換 ★★★
-    # ここでは item_name 自体を上書きするのではなく、
-    # factor の levels (順序) をCSV上の列名順 (target_items) に、
-    # labels (表示名) をマッピング (item_labels_map) に設定します。
     item_name = factor(
-      item_name, 
-      levels = target_items, # データの順序
-      labels = item_display_labels  # 表示するラベル
+      item_key,
+      levels = target_items,
+      labels = item_display_labels
     )
   ) %>%
   filter(!is.na(value), !is.na(class))
 
+summary_stats <- df_long %>%
+  group_by(class, time, item_key, item_name) %>%
+  summarise(
+    n = dplyr::n(),
+    mean = mean(value, na.rm = TRUE),
+    median = median(value, na.rm = TRUE),
+    variance = var(value, na.rm = TRUE),
+    sd = sd(value, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  dplyr::arrange(item_key, time, class)
+
 # 6. プロットの作成
 violin_plot <- ggplot(df_long, aes(x = class, y = value, fill = time)) +
-  
   geom_violin(position = position_dodge(width = 0.9), alpha = 0.7, trim = FALSE) +
-  geom_boxplot(
-    width = 0.1, 
-    position = position_dodge(width = 0.9), 
-    fill = "white",
-    outlier.size = 0.5
-  ) +
   
   # ------------------------------------------------------------------
   # ★★★ `facet_wrap` の `labeller` を使用（より堅牢な方法）★★★
@@ -257,19 +261,65 @@ violin_plot <- ggplot(df_long, aes(x = class, y = value, fill = time)) +
   theme_minimal() +
   theme(
     strip.text = element_text(size = 12, face = "bold"),
-    legend.position = "bottom"
+    legend.position = "bottom",
+    plot.title = element_text(size = 18, face = "bold"),
+    plot.subtitle = element_text(size = 14)
   )
 
 # 7. プロットの表示
 print(violin_plot)
 
-# 8. プロットをPNG画像として保存（カラー表示）
+# 8. 箱ひげ図の作成
+box_plot <- ggplot(df_long, aes(x = class, y = value, fill = time)) +
+  geom_boxplot(position = position_dodge(width = 0.9), outlier.size = 0.6) +
+  facet_wrap(~ item_name, scales = "free_y") +
+  labs(
+    title = "Longitudinal Boxplot by Class and Item",
+    subtitle = "Time 1 vs Time 2",
+    x = "Class",
+    y = "Value",
+    fill = "Timepoint"
+  ) +
+  theme_minimal() +
+  theme(
+    strip.text = element_text(size = 12, face = "bold"),
+    legend.position = "bottom",
+    plot.title = element_text(size = 18, face = "bold"),
+    plot.subtitle = element_text(size = 14)
+  )
+
+print(box_plot)
+
+# 9. 出力ディレクトリを作成
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+}
+
+violin_path <- file.path(output_dir, output_violin_file)
+boxplot_path <- file.path(output_dir, output_boxplot_file)
+stats_path <- file.path(output_dir, output_stats_file)
+
+# 10. プロットおよび統計情報を保存
 ggsave(
-  filename = output_plot_file,
+  filename = violin_path,
   plot = violin_plot,
   width = 12,
   height = 7,
   dpi = 300,
   bg = "white"
 )
-cat(paste0("🖼️ プロットを '", output_plot_file, "' として保存しました。\n"))
+cat(sprintf("🖼️ バイオリンプロットを '%s' に保存しました。\n", normalizePath(violin_path)))
+
+ggsave(
+  filename = boxplot_path,
+  plot = box_plot,
+  width = 12,
+  height = 7,
+  dpi = 300,
+  bg = "white"
+)
+
+cat(sprintf("🖼️ 箱ひげ図を '%s' に保存しました。\n", normalizePath(boxplot_path)))
+
+readr::write_csv(summary_stats, stats_path)
+cat(sprintf("🧮 要約統計を '%s' に保存しました。\n", normalizePath(stats_path)))

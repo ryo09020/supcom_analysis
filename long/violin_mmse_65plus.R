@@ -32,7 +32,10 @@ time2_item_map <- c(
   mmse_total = "mmse_total"
 )
 
-output_plot_file <- "mmse_violin_65plus.png"
+output_dir <- "longitudinal_outputs"
+output_violin_file <- "mmse_violin_65plus.png"
+output_boxplot_file <- "mmse_boxplot_65plus.png"
+output_stats_file <- "mmse_summary_stats.csv"
 
 time1_label <- "Time 1"
 time2_label <- "Time 2"
@@ -220,20 +223,35 @@ mmse_long <- df_combined |>
     values_to = "value"
   ) |>
   dplyr::mutate(
-    time = factor(time, levels = time_levels),
-    item_name = factor(
-      item_name,
-      levels = mmse_items,
-      labels = item_display_labels
-    )
+    item_key = item_name,
+    time = factor(time, levels = time_levels)
   )
+
+mmse_long$item_name <- factor(
+  mmse_long$item_key,
+  levels = mmse_items,
+  labels = item_display_labels
+)
 
 mmse_long <- mmse_long[!is.na(mmse_long$value) & !is.na(mmse_long[[class_column]]), , drop = FALSE]
 mmse_long$class_plot <- factor(mmse_long[[class_column]])
+mmse_long$class_value <- mmse_long[[class_column]]
 
 if (nrow(mmse_long) == 0) {
   stop("No valid MMSE values remain after filtering.", call. = FALSE)
 }
+
+mmse_summary <- mmse_long |>
+  dplyr::group_by(class = class_value, time, item_key, item_name) |>
+  dplyr::summarise(
+    n = dplyr::n(),
+    mean = mean(value, na.rm = TRUE),
+    median = median(value, na.rm = TRUE),
+    variance = var(value, na.rm = TRUE),
+    sd = sd(value, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  dplyr::arrange(item_key, time, class)
 
 # ------------------------------------------------------------------
 # Plot
@@ -243,34 +261,66 @@ message("Generating MMSE violin plot (65+)...")
 
 mmse_violin_plot <- ggplot(mmse_long, aes(x = class_plot, y = value, fill = time)) +
   geom_violin(position = position_dodge(width = 0.9), alpha = 0.7, trim = FALSE) +
-  geom_boxplot(
-    width = 0.1,
-    position = position_dodge(width = 0.9),
-    fill = "white",
-    outlier.size = 0.5
-  ) +
   facet_wrap(~ item_name, scales = "free_y") +
   labs(
     title = "MMSE Longitudinal Comparison (65+)",
     subtitle = paste0(time1_label, " vs ", time2_label),
-  x = "Class",
+    x = "Class",
     y = "MMSE Score",
     fill = "Timepoint"
   ) +
   theme_minimal() +
   theme(
     strip.text = element_text(size = 12, face = "bold"),
-    legend.position = "bottom"
+    legend.position = "bottom",
+    plot.title = element_text(size = 18, face = "bold"),
+    plot.subtitle = element_text(size = 14)
   )
 
 print(mmse_violin_plot)
 
 # ------------------------------------------------------------------
+# Boxplot
+# ------------------------------------------------------------------
+
+mmse_box_plot <- ggplot(mmse_long, aes(x = class_plot, y = value, fill = time)) +
+  geom_boxplot(position = position_dodge(width = 0.9), outlier.size = 0.6) +
+  facet_wrap(~ item_name, scales = "free_y") +
+  labs(
+    title = "MMSE Longitudinal Boxplot (65+)",
+    subtitle = paste0(time1_label, " vs ", time2_label),
+    x = "Class",
+    y = "MMSE Score",
+    fill = "Timepoint"
+  ) +
+  theme_minimal() +
+  theme(
+    strip.text = element_text(size = 12, face = "bold"),
+    legend.position = "bottom",
+    plot.title = element_text(size = 18, face = "bold"),
+    plot.subtitle = element_text(size = 14)
+  )
+
+print(mmse_box_plot)
+
+# ------------------------------------------------------------------
 # Save plot
 # ------------------------------------------------------------------
 
+# ------------------------------------------------------------------
+# Save plot & stats
+# ------------------------------------------------------------------
+
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+}
+
+violin_path <- file.path(output_dir, output_violin_file)
+boxplot_path <- file.path(output_dir, output_boxplot_file)
+stats_path <- file.path(output_dir, output_stats_file)
+
 ggsave(
-  filename = output_plot_file,
+  filename = violin_path,
   plot = mmse_violin_plot,
   width = 10,
   height = 6,
@@ -278,4 +328,18 @@ ggsave(
   bg = "white"
 )
 
-message(sprintf("Saved plot to '%s'.", output_plot_file))
+message(sprintf("Saved violin plot to '%s'.", normalizePath(violin_path)))
+
+ggsave(
+  filename = boxplot_path,
+  plot = mmse_box_plot,
+  width = 10,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
+
+message(sprintf("Saved box plot to '%s'.", normalizePath(boxplot_path)))
+
+readr::write_csv(mmse_summary, stats_path)
+message(sprintf("Saved summary statistics to '%s'.", normalizePath(stats_path)))
