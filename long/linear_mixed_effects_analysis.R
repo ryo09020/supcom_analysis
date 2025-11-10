@@ -30,6 +30,7 @@ file_time2 <- "time2_with_class.csv"
 
 id_column <- "ID"
 class_column <- "class"
+class_filter <- NULL  # 例: 1:3 や c("1", "2", "3"); NULL の場合は全クラスを使用
 
 # Items to analyse (order defines reporting order)
 target_items <- c("subscale_A", "subscale_B", "total_score", "mmse_total")
@@ -179,6 +180,14 @@ df_combined <- dplyr::bind_rows(df_time1, df_time2)
 
 df_combined[[id_column]] <- normalize_id(df_combined[[id_column]])
 df_combined[[class_column]] <- as.character(df_combined[[class_column]])
+
+if (!is.null(class_filter)) {
+  class_filter_chr <- as.character(class_filter)
+  df_combined <- df_combined[df_combined[[class_column]] %in% class_filter_chr, , drop = FALSE]
+  if (nrow(df_combined) == 0) {
+    stop_config("class_filter に一致するデータが見つかりませんでした")
+  }
+}
 
 df_long <- df_combined |>
   tidyr::pivot_longer(
