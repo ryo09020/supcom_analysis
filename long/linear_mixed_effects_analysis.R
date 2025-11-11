@@ -146,6 +146,45 @@ prepare_timepoint_data <- function(file_path, time_label, item_map, target_items
     dplyr::mutate(time = time_label)
 }
 
+if (!file.exists(file_time1)) {
+  stop_config(paste0("Time 1 ファイルが見つかりません: ", file_time1))
+}
+if (!file.exists(file_time2)) {
+  stop_config(paste0("Time 2 ファイルが見つかりません: ", file_time2))
+}
+if (length(target_items) == 0) {
+  stop_config("target_items が空です")
+}
+if (any(duplicated(target_items))) {
+  stop_config("target_items に重複があります")
+}
+
+item_labels_map <- if (length(item_labels_map) == 0) {
+  stats::setNames(target_items, target_items)
+} else {
+  missing_labels <- setdiff(target_items, names(item_labels_map))
+  if (length(missing_labels) > 0) {
+    stop_config(paste0("item_labels_map に不足しているキー: ", paste(missing_labels, collapse = ", ")))
+  }
+  item_labels_map[target_items]
+}
+
+df_time1 <- prepare_timepoint_data(file_time1, "Time 1", time1_item_map, target_items, id_column, class_column)
+df_time2 <- prepare_timepoint_data(file_time2, "Time 2", time2_item_map, target_items, id_column, class_column)
+
+df_combined <- dplyr::bind_rows(df_time1, df_time2)
+
+df_combined[[id_column]] <- normalize_id(df_combined[[id_column]])
+df_combined[[class_column]] <- as.character(df_combined[[class_column]])
+
+if (!is.null(class_filter)) {
+  class_filter_chr <- as.character(class_filter)
+  df_combined <- df_combined[df_combined[[class_column]] %in% class_filter_chr, , drop = FALSE]
+  if (nrow(df_combined) == 0) {
+    stop_config("class_filter に一致するデータが見つかりませんでした")
+  }
+}
+
 df_long <- df_combined |>
   tidyr::pivot_longer(
     cols = dplyr::all_of(target_items),
