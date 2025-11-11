@@ -68,15 +68,23 @@ analyze_by_class_improved <- function(file_path, columns_to_test, class_column) 
   }
 
   # 分析対象列を数値型に変換。変換できない値はNAになる
-  for (col in columns_to_test) {
-    if (!is.numeric(df[[col]])) {
-      original_na_count <- sum(is.na(df[[col]]))
-      df[[col]] <- suppressWarnings(as.numeric(as.character(df[[col]])))
-      new_na_count <- sum(is.na(df[[col]])) - original_na_count
-      if (new_na_count > 0) {
-        cat(sprintf("情報: 列 '%s' で、数値に変換できない %d 個の値をNAとして扱います。\n", col, new_na_count))
+  df <- df %>%
+    mutate(across(all_of(columns_to_test), ~ {
+      if (is.numeric(.x)) {
+        return(.x)
       }
-    }
+      original_na_count <- sum(is.na(.x))
+      numeric_vec <- suppressWarnings(as.numeric(as.character(.x)))
+      new_na_count <- sum(is.na(numeric_vec)) - original_na_count
+      if (new_na_count > 0) {
+        cat(sprintf("情報: 列 '%s' で、数値に変換できない %d 個の値をNAとして扱います。\n", cur_column(), new_na_count))
+      }
+      numeric_vec
+    }))
+
+  non_numeric_cols <- names(which(!vapply(df[columns_to_test], is.numeric, logical(1))))
+  if (length(non_numeric_cols) > 0) {
+    stop(paste0("エラー: 数値変換後も数値型になっていない列があります -> ", paste(non_numeric_cols, collapse = ", ")))
   }
   
   # 結果を格納するための空のリストを作成
@@ -89,18 +97,21 @@ analyze_by_class_improved <- function(file_path, columns_to_test, class_column) 
     desc_stats <- df %>%
       group_by(across(all_of(class_column))) %>%
       summarise(
-        Mean = mean(.data[[col]], na.rm = TRUE),
-        Median = median(.data[[col]], na.rm = TRUE),
-        SD = sd(.data[[col]], na.rm = TRUE),
-        Variance = var(.data[[col]], na.rm = TRUE),
+        N = sum(!is.na(.data[[col]])),
+        Mean = mean(as.numeric(.data[[col]]), na.rm = TRUE),
+        Median = median(as.numeric(.data[[col]]), na.rm = TRUE),
+        SD = sd(as.numeric(.data[[col]]), na.rm = TRUE),
+        Variance = var(as.numeric(.data[[col]]), na.rm = TRUE),
         .groups = 'drop'
       ) %>%
       pivot_wider(
         names_from = all_of(class_column),
-        values_from = c("Mean", "Median", "SD", "Variance"),
+        values_from = c("N", "Mean", "Median", "SD", "Variance"),
         names_sep = "_"
       )
     
+    total_valid_n <- sum(!is.na(df[[col]]))
+
     # クラスカル・ウォリス検定
     kw_formula <- reformulate(class_column, col)
     kw_test <- kruskal.test(kw_formula, data = df)
@@ -131,6 +142,7 @@ analyze_by_class_improved <- function(file_path, columns_to_test, class_column) 
     current_result <- tibble(Item = col) %>%
       bind_cols(desc_stats) %>%
       mutate(
+        Total_N = total_valid_n,
         H_Value = kw_test$statistic,
         df = kw_test$parameter,
         p_value_kruskal = kw_test$p.value,
