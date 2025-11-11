@@ -146,49 +146,6 @@ prepare_timepoint_data <- function(file_path, time_label, item_map, target_items
     dplyr::mutate(time = time_label)
 }
 
-if (!file.exists(file_time1)) {
-  stop_config(paste0("Time 1 ファイルが見つかりません: ", file_time1))
-}
-if (!file.exists(file_time2)) {
-  stop_config(paste0("Time 2 ファイルが見つかりません: ", file_time2))
-}
-if (length(target_items) == 0) {
-  stop_config("target_items が空です")
-}
-if (any(duplicated(target_items))) {
-  stop_config("target_items に重複があります")
-}
-
-item_labels_map <- if (length(item_labels_map) == 0) {
-  stats::setNames(target_items, target_items)
-} else {
-  missing_labels <- setdiff(target_items, names(item_labels_map))
-  if (length(missing_labels) > 0) {
-    stop_config(paste0("item_labels_map に不足しているキー: ", paste(missing_labels, collapse = ", ")))
-  }
-  item_labels_map[target_items]
-}
-
-# ------------------------------------------------------------------
-# Data assembly
-# ------------------------------------------------------------------
-
-df_time1 <- prepare_timepoint_data(file_time1, "Time 1", time1_item_map, target_items, id_column, class_column)
-df_time2 <- prepare_timepoint_data(file_time2, "Time 2", time2_item_map, target_items, id_column, class_column)
-
-df_combined <- dplyr::bind_rows(df_time1, df_time2)
-
-df_combined[[id_column]] <- normalize_id(df_combined[[id_column]])
-df_combined[[class_column]] <- as.character(df_combined[[class_column]])
-
-if (!is.null(class_filter)) {
-  class_filter_chr <- as.character(class_filter)
-  df_combined <- df_combined[df_combined[[class_column]] %in% class_filter_chr, , drop = FALSE]
-  if (nrow(df_combined) == 0) {
-    stop_config("class_filter に一致するデータが見つかりませんでした")
-  }
-}
-
 df_long <- df_combined |>
   tidyr::pivot_longer(
     cols = dplyr::all_of(target_items),
@@ -243,6 +200,9 @@ fit_item_model <- function(item_key, item_label, data) {
   if (is.null(model)) {
     return(NULL)
   }
+  resid_sd <- tryCatch({
+    summary(model)$sigma
+  }, error = function(e) NA_real_)
   t_table <- summary(model)$tTable
   coef_table <- as.data.frame(t_table)
   coef_table$term <- rownames(t_table)
@@ -287,11 +247,33 @@ fit_item_model <- function(item_key, item_label, data) {
       contrast_results <- NULL
     }
     if (!is.null(contrast_results)) {
-      contrast_df <- as.data.frame(contrast_results)
-      contrast_df$item_key <- item_key
-      contrast_df$item_label <- item_label
-      names(contrast_df)[names(contrast_df) == class_column] <- "class"
-      time_contrasts <- contrast_df
+      contrast_summary <- tryCatch({
+        summary(contrast_results, infer = TRUE)
+      }, error = function(e) {
+        warn_msg <- sprintf("[WARN] %s: failed to compute contrast summary (%s)", item_label, conditionMessage(e))
+        message(warn_msg)
+        append_log(warn_msg)
+        return(NULL)
+      })
+      if (!is.null(contrast_summary)) {
+        contrast_df <- as.data.frame(contrast_summary)
+        contrast_df$effect_size <- if (!is.na(resid_sd) && resid_sd != 0) contrast_df$estimate / resid_sd else NA_real_
+        contrast_df$effect_size_mag <- dplyr::case_when(
+          is.na(contrast_df$effect_size) ~ NA_character_,
+          abs(contrast_df$effect_size) < 0.2 ~ "negligible",
+          abs(contrast_df$effect_size) < 0.5 ~ "small",
+          abs(contrast_df$effect_size) < 0.8 ~ "medium",
+          TRUE ~ "large"
+        )
+      } else {
+        contrast_df <- NULL
+      }
+      if (!is.null(contrast_df)) {
+        contrast_df$item_key <- item_key
+        contrast_df$item_label <- item_label
+        names(contrast_df)[names(contrast_df) == class_column] <- "class"
+        time_contrasts <- contrast_df
+      }
     }
   }
   list(fixed = coef_table, type3 = type3, time_contrasts = time_contrasts)
@@ -318,7 +300,14 @@ colnames(type3_tests) <- c("num_df", "den_df", "f_value", "p_value", "effect", "
 
 type3_tests <- type3_tests |>
   dplyr::select(item_key, item_label, effect, num_df, den_df, f_value, p_value) |>
-  dplyr::mutate(significant = ifelse(!is.na(p_value) & p_value < alpha_level, "yes", "no"))
+  dplyr::mutate(
+    significant = ifelse(!is.na(p_value) & p_value < alpha_level, "yes", "no"),
+    partial_eta_sq = ifelse(
+      !is.na(f_value) & !is.na(num_df) & !is.na(den_df),
+      (f_value * num_df) / (f_value * num_df + den_df),
+      NA_real_
+    )
+  )
 
 time_contrasts <- purrr::map(model_outputs, "time_contrasts") |> purrr::compact()
 time_contrasts_df <- NULL
@@ -327,9 +316,11 @@ if (length(time_contrasts) > 0) {
     dplyr::rename(
       std_error = SE,
       t_value = `t.ratio`,
-      p_value = `p.value`
+      p_value = `p.value`,
+      lower_ci = `lower.CL`,
+      upper_ci = `upper.CL`
     ) |>
-    dplyr::select(item_key, item_label, class, contrast, estimate, std_error, df, t_value, p_value) |>
+    dplyr::select(item_key, item_label, class, contrast, estimate, std_error, df, t_value, p_value, lower_ci, upper_ci, effect_size, effect_size_mag) |>
     dplyr::mutate(significant = ifelse(!is.na(p_value) & p_value < alpha_level, "yes", "no"))
 }
 
