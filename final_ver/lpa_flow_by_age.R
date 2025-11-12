@@ -376,24 +376,46 @@ create_comparison_table <- function(lpa_models) {
       )
     }
     
-    # 最終的な比較表を作成
+    # 最終的な比較表を作成（利用可能な全ての指標を保持）
+    rename_map <- c(
+      Classes = "Profiles",
+      LogLik = "Log-likelihood",
+      SABIC = "Sample-Size Adjusted BIC",
+      BLRT_p = "BLRT p-value",
+      VLMR_p = "VLMR p-value"
+    )
+    for (nm in names(rename_map)) {
+      if (nm %in% colnames(fit_indices)) {
+        colnames(fit_indices)[colnames(fit_indices) == nm] <- rename_map[[nm]]
+      }
+    }
+
     final_comparison_table <- fit_indices %>%
-      rename(
-        Profiles = Classes,
-        `Log-likelihood` = LogLik,
-        `Sample-Size Adjusted BIC` = SABIC,
-        `BLRT p-value` = BLRT_p,
-        `VLMR p-value` = VLMR_p
-      ) %>%
-      select(
-        Model, Profiles, `Log-likelihood`, AIC, BIC, `Sample-Size Adjusted BIC`,
-        Entropy, `BLRT p-value`, `VLMR p-value`
-      ) %>%
-      left_join(class_proportions, by = c("Model", "Profiles")) %>%
-      mutate(
-        across(c(`Log-likelihood`, AIC, BIC, `Sample-Size Adjusted BIC`), ~round(.x, 2)),
-        across(c(Entropy, `BLRT p-value`, `VLMR p-value`), ~round(.x, 3))
-      )
+      left_join(class_proportions, by = c("Model", "Profiles"))
+
+    # 数値列の丸め処理（指標に応じて桁数を調整）
+    numeric_cols <- names(Filter(is.numeric, final_comparison_table))
+    round_two_cols <- intersect(numeric_cols, c("Log-likelihood", "AIC", "BIC", "Sample-Size Adjusted BIC"))
+    if (length(round_two_cols) > 0) {
+      final_comparison_table <- final_comparison_table %>%
+        mutate(across(all_of(round_two_cols), ~round(.x, 2)))
+    }
+    round_three_cols <- setdiff(numeric_cols, c("Model", "Profiles", "Parameters", "N", round_two_cols))
+    if (length(round_three_cols) > 0) {
+      final_comparison_table <- final_comparison_table %>%
+        mutate(across(all_of(round_three_cols), ~round(.x, 3)))
+    }
+
+    # 推奨順に列を並べ替え（存在する場合のみ）
+    preferred_order <- c(
+      "Model", "Profiles", "Log-likelihood", "AIC", "BIC", "Sample-Size Adjusted BIC",
+      "Entropy", "BLRT p-value", "VLMR p-value",
+      "prob_min", "prob_max", "prob_mean", "prob_median", "prob_sd",
+      "n_min", "n_max", "Parameters", "N", "% in each class"
+    )
+    remaining_cols <- setdiff(colnames(final_comparison_table), preferred_order)
+    final_comparison_table <- final_comparison_table %>%
+      select(any_of(preferred_order), all_of(remaining_cols))
     
     cat("✅ 実際の所属割合を含む比較表の作成完了。\n\n")
     return(final_comparison_table)
