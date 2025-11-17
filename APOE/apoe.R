@@ -38,7 +38,7 @@ if (!any(file.exists(index_candidates))) {
 # --- データ読み込み (CSV) ------------------------------------------------
 read_input_data <- function(path, id_col, class_col) {
     df <- read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
-    stopifnot(id_col %in: names(df), class_col %in% names(df))
+    stopifnot(id_col %in% names(df), class_col %in% names(df))
     df[[id_col]] <- as.character(df[[id_col]])
     df <- df[!is.na(df[[id_col]]) & df[[id_col]] != "", ]
     df
@@ -68,12 +68,11 @@ message(sprintf("Found %d total IDs in CSV.", length(csv_sample_ids)))
 message(sprintf("Found %d total IDs in VCF.", length(vcf_sample_ids)))
 message(sprintf("Proceeding with %d common IDs.", length(common_sample_ids)))
 
-# ★★★ 修正点 ★★★
-# /tmp ではなく、現在の作業ディレクトリ (getwd()) に一時ディレクトリを作成
-# (パスにスペースが入るのを防ぐため)
+# ★★★ 最終修正点 ★★★
+# paste0 と アンダースコア(_) を使い、パスにスペースが入らないようにする
 temp_dir <- file.path(getwd(), paste0("apoe_temp_", Sys.getpid()))
 dir.create(temp_dir, showWarnings = FALSE, recursive = TRUE)
-message(sprintf("Using temporary directory: %s", temp_dir))
+message(sprintf("Using temporary directory: %s", temp_dir)) # 確認用
 
 sample_file <- file.path(temp_dir, "common_samples.txt")
 writeLines(common_sample_ids, sample_file)
@@ -103,7 +102,7 @@ if (!file.exists(query_file) || file.info(query_file)$size == 0) {
     # ファイルが作られなかった場合
     stop(paste(c(
         "bcftools query FAILED to create the output file.",
-        "This often happens if the wrapper script fails silently.",
+        "This often happens if the wrapper script fails (e.g., due to spaces in path).",
         "Captured stderr output from bcftools:",
         stderr_output
     ), collapse = "\n"))
