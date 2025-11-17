@@ -53,6 +53,19 @@ get_bcftools_version <- function(path) {
 	parse_bcftools_version(ver_lines)
 }
 
+detect_query_flags <- function(path) {
+	help_lines <- tryCatch(
+		system2(path, c("query", "--help"), stdout = TRUE, stderr = TRUE),
+		error = function(e) character(0)
+	)
+	supports <- function(pattern) any(grepl(pattern, help_lines, fixed = TRUE))
+	list(
+		format = if (supports("--format")) "--format" else "-f",
+		include = if (supports("--include")) "--include" else "-i",
+		samples = if (supports("--samples-file")) "--samples-file" else "-S"
+	)
+}
+
 if (dry_run) {
 	message("APOE_DRY_RUN=TRUE detected. Skipping heavy I/O. Current configuration:")
 	print(cfg)
@@ -87,9 +100,10 @@ if (!is.na(bcftools_version$num) && bcftools_version$num < min_supported) {
 }
 
 supports_threads_flag <- !is.na(bcftools_version$num) && bcftools_version$num >= numeric_version("1.3")
-format_flag <- if (!is.na(bcftools_version$num)) "--format" else "-f"
-include_flag <- if (!is.na(bcftools_version$num)) "--include" else "-i"
-samples_flag <- if (!is.na(bcftools_version$num)) "--samples-file" else "-S"
+query_flags <- detect_query_flags(bcftools_path)
+format_flag <- query_flags$format
+include_flag <- query_flags$include
+samples_flag <- query_flags$samples
 
 snp_ids <- cfg$snp_ids
 
