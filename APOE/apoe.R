@@ -96,9 +96,33 @@ query_args <- c(
 query_file <- file.path(temp_dir, "apoe_genotypes.tsv")
 stderr_output <- system2(bcftools_path, query_args, stdout = query_file, stderr = TRUE)
 status <- attr(stderr_output, "status")
-if (!is.null(status) && status != 0) {
-    stop(paste(c("bcftools query failed:", stderr_output), collapse = "\n"))
+
+# ★★★ ここからが強化されたエラーチェック ★★★
+
+# 1. 物理的にファイルが作成されたかを確認 (サイレントフェイル対策)
+if (!file.exists(query_file)) {
+    stop(paste(
+        c("bcftools query FAILED to create the output file.",
+          "This means the command failed silently (status might be 0).",
+          "--- Captured stderr output from bcftools ---",
+          stderr_output,
+          "----------------------------------------------"),
+        collapse = "\n"
+    ))
 }
+
+# 2. 念のため、従来のステータスチェックも行う
+if (!is.null(status) && status != 0) {
+    stop(paste(c("bcftools query failed with non-zero status:", stderr_output), collapse = "\n"))
+}
+
+# 3. ファイルが空でないかも確認
+if (file.info(query_file)$size == 0) {
+    stop("bcftools query ran but produced an EMPTY output file (0 bytes). Check region or inputs.")
+}
+
+message("bcftools query successful, reading results...")
+
 
 geno_raw <- read.table(query_file, header = FALSE, sep = "\t", stringsAsFactors = FALSE, check.names = FALSE)
 expected_cols <- 3 + length(common_sample_ids) # ★ 共通IDの数でチェック
