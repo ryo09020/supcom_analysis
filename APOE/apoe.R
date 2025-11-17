@@ -32,6 +32,27 @@ if (length(cfg$snp_ids) != 2) {
 	stop("This workflow expects exactly two SNP IDs (rs429358 and rs7412 by default).")
 }
 
+parse_bcftools_version <- function(version_lines) {
+	if (length(version_lines) == 0) {
+		return(list(raw = NA_character_, num = NA))
+	}
+	first_line <- version_lines[1]
+	match <- regexpr("\\d+(\\.\\d+)+", first_line)
+	if (match == -1) {
+		return(list(raw = first_line, num = NA))
+	}
+	numeric_str <- regmatches(first_line, match)
+	list(raw = first_line, num = tryCatch(numeric_version(numeric_str), error = function(e) NA))
+}
+
+get_bcftools_version <- function(path) {
+	ver_lines <- tryCatch(
+		system2(path, "--version", stdout = TRUE, stderr = TRUE),
+		error = function(e) character(0)
+	)
+	parse_bcftools_version(ver_lines)
+}
+
 if (dry_run) {
 	message("APOE_DRY_RUN=TRUE detected. Skipping heavy I/O. Current configuration:")
 	print(cfg)
@@ -45,9 +66,30 @@ if (length(missing) > 0) {
 }
 
 bcftools_path <- cfg$bcftools
-if (!nzchar(Sys.which(bcftools_path))) {
+resolved_bcftools <- Sys.which(bcftools_path)
+if (!nzchar(resolved_bcftools)) {
 	stop(sprintf("bcftools executable '%s' was not found on this system. Load the module or adjust --bcftools.", bcftools_path))
 }
+bcftools_path <- resolved_bcftools
+
+bcftools_version <- get_bcftools_version(bcftools_path)
+if (!is.na(bcftools_version$raw)) {
+	message(sprintf("bcftools detected: %s", bcftools_version$raw))
+}
+
+min_supported <- numeric_version("1.2")
+if (!is.na(bcftools_version$num) && bcftools_version$num < min_supported) {
+	stop(sprintf(
+		"This workflow requires bcftools >= %s (detected %s). Please load a newer module (1.22+ recommended).",
+		as.character(min_supported),
+		as.character(bcftools_version$raw)
+	))
+}
+
+supports_threads_flag <- !is.na(bcftools_version$num) && bcftools_version$num >= numeric_version("1.3")
+format_flag <- if (!is.na(bcftools_version$num)) "--format" else "-f"
+include_flag <- if (!is.na(bcftools_version$num)) "--include" else "-i"
+samples_flag <- if (!is.na(bcftools_version$num)) "--samples-file" else "-S"
 
 snp_ids <- cfg$snp_ids
 
@@ -108,18 +150,22 @@ filter_clause <- paste(sprintf('ID=="%s"', snp_ids), collapse = " || ")
 thread_flag <- NULL
 if (!is.null(cfg$threads) && !is.na(cfg$threads)) {
 	if (cfg$threads > 1) {
-		thread_flag <- sprintf("--threads=%d", cfg$threads)
+		if (supports_threads_flag) {
+			thread_flag <- sprintf("--threads=%d", cfg$threads)
+		} else {
+			message("bcftools build does not advertise --threads support; running single-threaded instead.")
+		}
 	} else {
-		message("Note: cfg$threads <= 1 so the --threads flag is omitted. Set to a value >1 if your bcftools supports threading.")
+		message("Note: cfg$threads <= 1 so the --threads flag is omitted. Increase cfg$threads for parallel decoding.")
 	}
 }
 
 query_args <- c(
 	"query",
 	thread_flag,
-	"-f", "%ID\t%REF\t%ALT[\t%GT]\n",
-	"-i", filter_clause,
-	"-S", sample_file,
+	format_flag, "%ID\t%REF\t%ALT[\t%GT]\n",
+	include_flag, filter_clause,
+	samples_flag, sample_file,
 	cfg$vcf
 )
 
