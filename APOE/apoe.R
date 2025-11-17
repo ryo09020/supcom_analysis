@@ -68,28 +68,30 @@ message(sprintf("Found %d total IDs in CSV.", length(csv_sample_ids)))
 message(sprintf("Found %d total IDs in VCF.", length(vcf_sample_ids)))
 message(sprintf("Proceeding with %d common IDs.", length(common_sample_ids)))
 
-# ★★★ 最終修正点 ★★★
-# PID (Sys.getpid()) の使用を中止し、スペースの入る余地のない固定名に変更
+# (スペースの入らない固定ディレクトリ名を使用)
 temp_dir <- file.path(getwd(), "apoe_temp_dir_fixed")
 dir.create(temp_dir, showWarnings = FALSE, recursive = TRUE)
-
 message(sprintf("Using temporary directory: %s", temp_dir)) # 確認用
 
 sample_file <- file.path(temp_dir, "common_samples.txt")
 writeLines(common_sample_ids, sample_file)
 
 # --- bcftools query ------------------------------------------------------
-apoe_region <- "chr19:44930000-44931000" # 念のため座標をGRCh37/hg19に更新 (rs429358: 44908684 (38) vs 45411941 (37))
-#GRCh38: rs429358 (19:44908684), rs7412 (19:44908822)
-apoe_region <- "chr19:44908684-44908822" # 元の座標に戻します (あなたが'chr'付きで動いたと言っていたため)
-
+apoe_region <- "chr19:44908684-44908822"
 
 # (フォーマット文字列をファイルに書き出す)
 format_file <- file.path(temp_dir, "format.txt")
 writeLines("%ID\t%REF\t%ALT[\t%GT]\n", format_file)
 
-# (クエリ引数)
-query_args <- c(
+
+# ★★★ 修正点: system2() から system() に変更 ★★★
+
+query_file <- file.path(temp_dir, "apoe_genotypes.tsv")
+stderr_file <- file.path(temp_dir, "bcftools.stderr.txt") # エラー出力用
+
+# 1. シェルで実行するコマンド文字列を構築
+cmd_string <- paste(
+    bcftools_path,
     "query",
     "-f", format_file,
     "-r", apoe_region,
@@ -97,26 +99,38 @@ query_args <- c(
     config$vcf
 )
 
-query_file <- file.path(temp_dir, "apoe_genotypes.tsv")
-stderr_output <- system2(bcftools_path, query_args, stdout = query_file, stderr = TRUE)
-status <- attr(stderr_output, "status")
+# 2. リダイレクション (stdoutをquery_fileに、stderrをstderr_fileに)
+full_command <- paste(
+    cmd_string,
+    ">", query_file,    # stdout (>) を query_file へ
+    "2>", stderr_file   # stderr (2>) を stderr_file へ
+)
 
-# ★ bcftools 実行後のチェックを強化
-if (!file.exists(query_file) || file.info(query_file)$size == 0) {
-    # ファイルが作られなかった場合
+message(sprintf("Executing system() command..."))
+status <- system(full_command) # system() はステータスコード (0=成功) を返す
+
+# 3. エラーチェック
+if (status != 0) {
+    # 失敗した場合、stderr_file の中身を読み込んで表示
+    stderr_output <- readLines(stderr_file)
     stop(paste(c(
-        "bcftools query FAILED to create the output file.",
-        "This often happens if the wrapper script fails (e.g., due to spaces in path).",
-        "Captured stderr output from bcftools:",
+        "bcftools query failed via system(). Exit status was not 0.",
+        "Captured stderr output:",
         stderr_output
     ), collapse = "\n"))
 }
-if (!is.null(status) && status != 0) {
-    # 0以外のステータスコードが返ってきた場合
-    stop(paste(c("bcftools query failed with status code:", stderr_output), collapse = "\n"))
+
+# 4. ファイルが空でないかチェック
+if (!file.exists(query_file) || file.info(query_file)$size == 0) {
+    stderr_output <- if (file.exists(stderr_file)) readLines(stderr_file) else "No stderr file found."
+    stop(paste(c(
+        "bcftools query FAILED to create the output file (even with system()).",
+        "Captured stderr output:",
+        stderr_output
+    ), collapse = "\n"))
 }
 
-
+# --- 読み込み (ここからは変更なし) ---------------------------------------
 geno_raw <- read.table(query_file, header = FALSE, sep = "\t", stringsAsFactors = FALSE, check.names = FALSE)
 expected_cols <- 3 + length(common_sample_ids)
 if (ncol(geno_raw) != expected_cols) {
@@ -147,12 +161,6 @@ calc_e4_dosage <- function(gt1, gt2, ref1, alt1, ref2, alt2) {
     alleles1 <- decode_gt(gt1, ref1, alt1)
     alleles2 <- decode_gt(gt2, ref2, alt2) 
     if (all(is.na(alleles1)) || all(is.na(alleles2))) return(NA_real_)
-    
-    # APOE e4 (rs429358=C, rs7412=C)
-    # rs429358 (SNP 1): e4 は "C"
-    # rs7412 (SNP 2): e4 は "C"
-    # e4ドセージ = min(SNP1の"C"の数, SNP2の"C"の数)
-    
     min(sum(alleles1 == "C", na.rm = TRUE), sum(alleles2 == "C", na.rm = TRUE))
 }
 
