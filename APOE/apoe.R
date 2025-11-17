@@ -48,15 +48,36 @@ class_df <- read_input_data(config$csv, config$id_column, config$class_column)
 csv_sample_ids <- unique(class_df[[config$id_column]])
 if (!length(csv_sample_ids)) stop("No IDs found in CSV.")
 
-# --- VCF/CSV ID照合 ------------------------------------------------------
-message("Listing samples from VCF header (this may take a moment)...")
-vcf_list_args <- c("query", "-l", config$vcf)
-vcf_sample_ids_raw <- system2(bcftools_path, vcf_list_args, stdout = TRUE, stderr = TRUE)
-status <- attr(vcf_sample_ids_raw, "status")
-if (!is.null(status) && status != 0) {
-    stop(paste(c("bcftools query -l failed (VCF sample list):", vcf_sample_ids_raw), collapse = "\n"))
+# (一時ディレクトリをスペースなしで作成)
+temp_dir <- file.path(getwd(), "apoe_temp_dir_fixed")
+dir.create(temp_dir, showWarnings = FALSE, recursive = TRUE)
+message(sprintf("Using temporary directory: %s", temp_dir))
+
+# --- VCF/CSV ID照合 (★ system2() から system() に変更) ------------------
+message("Listing samples from VCF header (using system())...")
+
+vcf_list_file <- file.path(temp_dir, "vcf_sample_list.txt")
+vcf_list_stderr <- file.path(temp_dir, "vcf_list.stderr.txt")
+
+# 1. system() で実行するコマンド文字列を構築
+vcf_list_cmd <- paste(
+    bcftools_path, "query", "-l", config$vcf,
+    ">", vcf_list_file,
+    "2>", vcf_list_stderr
+)
+
+# 2. 実行
+vcf_list_status <- system(vcf_list_cmd)
+
+# 3. エラーチェック
+if (vcf_list_status != 0) {
+    stderr_output <- readLines(vcf_list_stderr)
+    stop(paste(c("bcftools query -l failed via system().", "Captured stderr output:", stderr_output), collapse = "\n"))
 }
-vcf_sample_ids <- trimws(vcf_sample_ids_raw) # VCFにいる全サンプルのリスト
+
+# 4. 成功：ファイルからサンプルリストを読み込む
+vcf_sample_ids <- readLines(vcf_list_file)
+vcf_sample_ids <- trimws(vcf_sample_ids) # VCFにいる全サンプルのリスト
 
 # CSVとVCFの両方に存在するID（共通ID）を抽出
 common_sample_ids <- intersect(csv_sample_ids, vcf_sample_ids)
@@ -65,17 +86,11 @@ if (!length(common_sample_ids)) {
     stop("No common sample IDs found between the CSV and the VCF file.")
 }
 message(sprintf("Found %d total IDs in CSV.", length(csv_sample_ids)))
-message(sprintf("Found %d total IDs in VCF.", length(vcf_sample_ids)))
+message(sprintf("Found %d total (true) IDs in VCF.", length(vcf_sample_ids)))
 message(sprintf("Proceeding with %d common IDs.", length(common_sample_ids)))
 
-# (スペースの入らない固定ディレクトリ名を使用)
-temp_dir <- file.path(getwd(), "apoe_temp_dir_fixed")
-dir.create(temp_dir, showWarnings = FALSE, recursive = TRUE)
-message(sprintf("Using temporary directory: %s", temp_dir)) # 確認用
 
-# ★ 修正: -S オプションは使わないので、common_samples.txt の作成は不要
-
-# --- bcftools query ------------------------------------------------------
+# --- bcftools query (system() を使用) ------------------------------------
 apoe_region <- "chr19:44908684-44908822"
 
 # (フォーマット文字列をファイルに書き出す)
@@ -83,26 +98,23 @@ format_file <- file.path(temp_dir, "format.txt")
 writeLines("%ID\t%REF\t%ALT[\t%GT]\n", format_file)
 
 
-# ★★★ 修正点: system() コマンドから -S オプションを削除 ★★★
-
 query_file <- file.path(temp_dir, "apoe_genotypes.tsv")
 stderr_file <- file.path(temp_dir, "bcftools.stderr.txt") # エラー出力用
 
-# 1. シェルで実行するコマンド文字列を構築 ( -S sample_file を削除)
+# 1. シェルで実行するコマンド文字列を構築 ( -S は使わない)
 cmd_string <- paste(
     bcftools_path,
     "query",
     "-f", format_file,
     "-r", apoe_region,
-    # "-S", sample_file,  <- ★ 削除
     config$vcf
 )
 
-# 2. リダイレクション (stdoutをquery_fileに、stderrをstderr_fileに)
+# 2. リダイレクション
 full_command <- paste(
     cmd_string,
-    ">", query_file,    # stdout (>) を query_file へ
-    "2>", stderr_file   # stderr (2>) を stderr_file へ
+    ">", query_file,
+    "2>", stderr_file
 )
 
 message(sprintf("Executing system() command (outputting ALL samples in region)..."))
@@ -118,20 +130,17 @@ if (!file.exists(query_file) || file.info(query_file)$size == 0) {
     stop(paste(c("bcftools query FAILED to create the output file.", "Captured stderr output:", stderr_output), collapse = "\n"))
 }
 
-# --- 読み込み (★ここから大きく修正) ---------------------------------------
+# --- 読み込み (ここからは変更なし) ---------------------------------------
 
 # 1. 期待する列数を VCFの全サンプル数 に変更
 expected_cols <- 3 + length(vcf_sample_ids) 
 
 geno_raw <- read.table(query_file, header = FALSE, sep = "\t", stringsAsFactors = FALSE, check.names = FALSE,
-                       # 非常に重要: bcftoolsの出力は列数が多すぎるため、
-                       # read.tableがメモリ不足にならないよう、必要な列だけ読み込む
                        colClasses = "character", # 全て文字として読み込む
                        nrows = 5)                 # SNP行数(2)より少し多めにヘッダーだけ読む
 
-# 2. 列数チェック
+# 2. 列数チェック (★ ここが正しくパスするはず)
 if (ncol(geno_raw) != expected_cols) {
-    # ★ ここでエラーになった場合、vcf_sample_ids の数と VCFのヘッダーがズレている
     stop(sprintf("Unexpected bcftools output columns. Expected %d (3+all VCF samples), but got %d.", expected_cols, ncol(geno_raw)))
 }
 
@@ -139,11 +148,10 @@ if (ncol(geno_raw) != expected_cols) {
 colnames(geno_raw) <- c("SNP_ID", "REF", "ALT", vcf_sample_ids)
 
 # 4. 必要な列（共通ID）だけを R で選択
-# 固定列 + 共通IDの列だけを保持
 required_cols <- c("SNP_ID", "REF", "ALT", common_sample_ids)
 geno_filtered <- geno_raw[, required_cols]
 
-# --- APOE e4 計算 (ここからは geno_filtered を使う) -----------------------
+# --- APOE e4 計算 --------------------------------------------------------
 get_base <- function(code, ref, alt_string) {
     if (is.na(code) || code == ".") return(NA_character_)
     idx <- suppressWarnings(as.integer(code))
