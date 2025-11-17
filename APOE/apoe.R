@@ -56,7 +56,7 @@ status <- attr(vcf_sample_ids_raw, "status")
 if (!is.null(status) && status != 0) {
     stop(paste(c("bcftools query -l failed (VCF sample list):", vcf_sample_ids_raw), collapse = "\n"))
 }
-vcf_sample_ids <- trimws(vcf_sample_ids_raw)
+vcf_sample_ids <- trimws(vcf_sample_ids_raw) # VCFにいる全サンプルのリスト
 
 # CSVとVCFの両方に存在するID（共通ID）を抽出
 common_sample_ids <- intersect(csv_sample_ids, vcf_sample_ids)
@@ -73,8 +73,7 @@ temp_dir <- file.path(getwd(), "apoe_temp_dir_fixed")
 dir.create(temp_dir, showWarnings = FALSE, recursive = TRUE)
 message(sprintf("Using temporary directory: %s", temp_dir)) # 確認用
 
-sample_file <- file.path(temp_dir, "common_samples.txt")
-writeLines(common_sample_ids, sample_file)
+# ★ 修正: -S オプションは使わないので、common_samples.txt の作成は不要
 
 # --- bcftools query ------------------------------------------------------
 apoe_region <- "chr19:44908684-44908822"
@@ -84,18 +83,18 @@ format_file <- file.path(temp_dir, "format.txt")
 writeLines("%ID\t%REF\t%ALT[\t%GT]\n", format_file)
 
 
-# ★★★ 修正点: system2() から system() に変更 ★★★
+# ★★★ 修正点: system() コマンドから -S オプションを削除 ★★★
 
 query_file <- file.path(temp_dir, "apoe_genotypes.tsv")
 stderr_file <- file.path(temp_dir, "bcftools.stderr.txt") # エラー出力用
 
-# 1. シェルで実行するコマンド文字列を構築
+# 1. シェルで実行するコマンド文字列を構築 ( -S sample_file を削除)
 cmd_string <- paste(
     bcftools_path,
     "query",
     "-f", format_file,
     "-r", apoe_region,
-    "-S", sample_file,
+    # "-S", sample_file,  <- ★ 削除
     config$vcf
 )
 
@@ -106,39 +105,45 @@ full_command <- paste(
     "2>", stderr_file   # stderr (2>) を stderr_file へ
 )
 
-message(sprintf("Executing system() command..."))
+message(sprintf("Executing system() command (outputting ALL samples in region)..."))
 status <- system(full_command) # system() はステータスコード (0=成功) を返す
 
 # 3. エラーチェック
 if (status != 0) {
-    # 失敗した場合、stderr_file の中身を読み込んで表示
     stderr_output <- readLines(stderr_file)
-    stop(paste(c(
-        "bcftools query failed via system(). Exit status was not 0.",
-        "Captured stderr output:",
-        stderr_output
-    ), collapse = "\n"))
+    stop(paste(c("bcftools query failed via system(). Exit status was not 0.", "Captured stderr output:", stderr_output), collapse = "\n"))
 }
-
-# 4. ファイルが空でないかチェック
 if (!file.exists(query_file) || file.info(query_file)$size == 0) {
     stderr_output <- if (file.exists(stderr_file)) readLines(stderr_file) else "No stderr file found."
-    stop(paste(c(
-        "bcftools query FAILED to create the output file (even with system()).",
-        "Captured stderr output:",
-        stderr_output
-    ), collapse = "\n"))
+    stop(paste(c("bcftools query FAILED to create the output file.", "Captured stderr output:", stderr_output), collapse = "\n"))
 }
 
-# --- 読み込み (ここからは変更なし) ---------------------------------------
-geno_raw <- read.table(query_file, header = FALSE, sep = "\t", stringsAsFactors = FALSE, check.names = FALSE)
-expected_cols <- 3 + length(common_sample_ids)
+# --- 読み込み (★ここから大きく修正) ---------------------------------------
+
+# 1. 期待する列数を VCFの全サンプル数 に変更
+expected_cols <- 3 + length(vcf_sample_ids) 
+
+geno_raw <- read.table(query_file, header = FALSE, sep = "\t", stringsAsFactors = FALSE, check.names = FALSE,
+                       # 非常に重要: bcftoolsの出力は列数が多すぎるため、
+                       # read.tableがメモリ不足にならないよう、必要な列だけ読み込む
+                       colClasses = "character", # 全て文字として読み込む
+                       nrows = 5)                 # SNP行数(2)より少し多めにヘッダーだけ読む
+
+# 2. 列数チェック
 if (ncol(geno_raw) != expected_cols) {
-    stop("Unexpected bcftools output columns. Check that ID values match VCF sample names.")
+    # ★ ここでエラーになった場合、vcf_sample_ids の数と VCFのヘッダーがズレている
+    stop(sprintf("Unexpected bcftools output columns. Expected %d (3+all VCF samples), but got %d.", expected_cols, ncol(geno_raw)))
 }
-colnames(geno_raw) <- c("SNP_ID", "REF", "ALT", common_sample_ids)
 
-# --- APOE e4 計算 --------------------------------------------------------
+# 3. VCFの全サンプルIDを列名として設定
+colnames(geno_raw) <- c("SNP_ID", "REF", "ALT", vcf_sample_ids)
+
+# 4. 必要な列（共通ID）だけを R で選択
+# 固定列 + 共通IDの列だけを保持
+required_cols <- c("SNP_ID", "REF", "ALT", common_sample_ids)
+geno_filtered <- geno_raw[, required_cols]
+
+# --- APOE e4 計算 (ここからは geno_filtered を使う) -----------------------
 get_base <- function(code, ref, alt_string) {
     if (is.na(code) || code == ".") return(NA_character_)
     idx <- suppressWarnings(as.integer(code))
@@ -164,7 +169,7 @@ calc_e4_dosage <- function(gt1, gt2, ref1, alt1, ref2, alt2) {
     min(sum(alleles1 == "C", na.rm = TRUE), sum(alleles2 == "C", na.rm = TRUE))
 }
 
-snp_rows <- split(geno_raw, geno_raw$SNP_ID)
+snp_rows <- split(geno_filtered, geno_filtered$SNP_ID) # ★ geno_filtered を使用
 if (!all(config$snp_ids %in% names(snp_rows))) {
     stop("Requested SNP IDs not found in VCF query output (within the specified region).")
 }
