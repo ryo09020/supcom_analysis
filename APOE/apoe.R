@@ -15,6 +15,16 @@ config <- list(
 	threads = 1
 )
 
+compose_flag_arg <- function(flag, value) {
+	if (is.null(flag) || !nzchar(flag)) {
+		return(character(0))
+	}
+	if (startsWith(flag, "--")) {
+		return(sprintf("%s=%s", flag, value))
+	}
+	return(c(flag, value))
+}
+
 dry_run <- identical(tolower(Sys.getenv("APOE_DRY_RUN", "false")), "true")
 
 normalize_snp_ids <- function(x) {
@@ -53,11 +63,23 @@ get_bcftools_version <- function(path) {
 	parse_bcftools_version(ver_lines)
 }
 
-detect_query_flags <- function(path) {
+detect_query_flags <- function(path, prefer = c("auto", "long", "short")) {
+	prefer <- match.arg(prefer)
+	if (prefer == "short") {
+		return(list(format = "-f", include = "-i", samples = "-S"))
+	}
+	if (prefer == "long") {
+		return(list(format = "--format", include = "--include", samples = "--samples-file"))
+	}
 	help_lines <- tryCatch(
-		system2(path, c("query", "--help"), stdout = TRUE, stderr = TRUE),
+		suppressWarnings(system2(path, c("query", "--help"), stdout = TRUE, stderr = TRUE)),
 		error = function(e) character(0)
 	)
+	status <- attr(help_lines, "status")
+	if (!length(help_lines) || (!is.null(status) && status != 0)) {
+		message("Could not parse 'bcftools query --help'; defaulting to short flags (-f, -i, -S).")
+		return(list(format = "-f", include = "-i", samples = "-S"))
+	}
 	supports <- function(pattern) any(grepl(pattern, help_lines, fixed = TRUE))
 	list(
 		format = if (supports("--format")) "--format" else "-f",
@@ -177,12 +199,13 @@ if (!is.null(cfg$threads) && !is.na(cfg$threads)) {
 query_args <- c(
 	"query",
 	thread_flag,
-	format_flag, "%ID\t%REF\t%ALT[\t%GT]\n",
-	include_flag, filter_clause,
-	samples_flag, sample_file,
+	compose_flag_arg(format_flag, "%ID\t%REF\t%ALT[\t%GT]\n"),
+	compose_flag_arg(include_flag, filter_clause),
+	compose_flag_arg(samples_flag, sample_file),
 	cfg$vcf
 )
 
+query_args <- unlist(query_args, use.names = FALSE)
 query_args <- query_args[!is.null(query_args) & nzchar(query_args)]
 
 run_command(bcftools_path, query_args, stdout = query_file)
