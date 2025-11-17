@@ -88,11 +88,7 @@ message(sprintf("Proceeding with %d common IDs.", length(common_sample_ids)))
 # --- bcftools query (system() を使用) ------------------------------------
 apoe_region <- "chr19:44908684-44908822"
 
-# (フォーマット文字列をファイルに書き出す)
-format_file <- file.path(temp_dir, "format.txt")
-writeLines("%ID\t%REF\t%ALT[\t%GT]\n", format_file)
-
-# ★ 修正: 共通IDのリストを (再度) 書き出す
+# ★ 修正: 共通IDのリストを書き出す
 sample_file <- file.path(temp_dir, "common_samples.txt")
 writeLines(common_sample_ids, sample_file)
 
@@ -100,28 +96,31 @@ writeLines(common_sample_ids, sample_file)
 query_file <- file.path(temp_dir, "apoe_genotypes.tsv")
 stderr_file <- file.path(temp_dir, "bcftools.stderr.txt") # エラー出力用
 
-# ★★★ 修正点: -S オプションを復活 ★★★
-# 1. シェルで実行するコマンド文字列を構築
+# ★★★ 最終修正点 ★★★
+# 1. format.txt は使わず、フォーマット文字列をR内で定義
+format_string <- "%ID\t%REF\t%ALT[\t%GT]\n"
+
+# 2. cmd_string で、-f にファイルパスではなく shQuote() で保護した文字列を渡す
 cmd_string <- paste(
     bcftools_path,
     "query",
-    "-f", format_file,
-    "-r", shQuote(apoe_region), # 引用符で "chr19:..." を囲む
-    "-S", sample_file,          # ★ 復活
+    "-f", shQuote(format_string), # ★ 修正
+    "-r", shQuote(apoe_region),
+    "-S", sample_file,
     config$vcf
 )
 
-# 2. リダイレクション
+# 3. リダイレクション
 full_command <- paste(
     cmd_string,
     ">", query_file,
     "2>", stderr_file
 )
 
-message(sprintf("Executing system() command (filtering samples)..."))
+message(sprintf("Executing system() command (inline format string)..."))
 status <- system(full_command) # system() はステータスコード (0=成功) を返す
 
-# 3. エラーチェック
+# 4. エラーチェック
 if (status != 0) {
     stderr_output <- readLines(stderr_file)
     stop(paste(c("bcftools query failed via system(). Exit status was not 0.", "Captured stderr output:", stderr_output), collapse = "\n"))
@@ -133,13 +132,13 @@ if (!file.exists(query_file) || file.info(query_file)$size == 0) {
 
 # --- 読み込み -------------------------------------------------------------
 
-# ★ 修正: 期待する列数を「共通IDの数」に戻す
+# (期待する列数は 3 + 共通IDの数)
 expected_cols <- 3 + length(common_sample_ids) 
 
 geno_raw <- read.table(query_file, header = FALSE, sep = "\t", stringsAsFactors = FALSE, check.names = FALSE,
                        colClasses = "character")
 
-# 2. 列数チェック (★ ここが 503 == 503 のようになるはず)
+# 2. 列数チェック (★ ここが 9907 == 9907 となるはず)
 if (ncol(geno_raw) != expected_cols) {
     stop(sprintf("Unexpected bcftools output columns. Expected %d (3+common samples), but got %d.", expected_cols, ncol(geno_raw)))
 }
@@ -147,10 +146,9 @@ if (ncol(geno_raw) != expected_cols) {
 # 3. 「共通ID」を列名として設定
 colnames(geno_raw) <- c("SNP_ID", "REF", "ALT", common_sample_ids)
 
-# 4. ★ 修正: フィルタリングは不要 (bcftoolsが実行済み)
 geno_filtered <- geno_raw
 
-# --- APOE e4 計算 --------------------------------------------------------
+# --- APOE e4 計算 (変更なし) ------------------------------------------
 get_base <- function(code, ref, alt_string) {
     if (is.na(code) || code == ".") return(NA_character_)
     idx <- suppressWarnings(as.integer(code))
@@ -176,7 +174,7 @@ calc_e4_dosage <- function(gt1, gt2, ref1, alt1, ref2, alt2) {
     min(sum(alleles1 == "C", na.rm = TRUE), sum(alleles2 == "C", na.rm = TRUE))
 }
 
-snp_rows <- split(geno_filtered, geno_filtered$SNP_ID) # ★ geno_filtered を使用
+snp_rows <- split(geno_filtered, geno_filtered$SNP_ID) 
 if (!all(config$snp_ids %in% names(snp_rows))) {
     stop("Requested SNP IDs not found in VCF query output (within the specified region).")
 }
