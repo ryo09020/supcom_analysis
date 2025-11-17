@@ -68,11 +68,13 @@ message(sprintf("Found %d total IDs in CSV.", length(csv_sample_ids)))
 message(sprintf("Found %d total IDs in VCF.", length(vcf_sample_ids)))
 message(sprintf("Proceeding with %d common IDs.", length(common_sample_ids)))
 
-# ★★★ 最終修正点 ★★★
+# ★★★ 修正済みの行 ★★★
 # paste0 と アンダースコア(_) を使い、パスにスペースが入らないようにする
 temp_dir <- file.path(getwd(), paste0("apoe_temp_", Sys.getpid()))
 dir.create(temp_dir, showWarnings = FALSE, recursive = TRUE)
-message(sprintf("Using temporary directory: %s", temp_dir)) # 確認用
+
+# ★★★ 確認用メッセージ (これが表示されるはず) ★★★
+message(sprintf("Using temporary directory: %s", temp_dir))
 
 sample_file <- file.path(temp_dir, "common_samples.txt")
 writeLines(common_sample_ids, sample_file)
@@ -141,8 +143,17 @@ decode_gt <- function(gt, ref, alt) {
 
 calc_e4_dosage <- function(gt1, gt2, ref1, alt1, ref2, alt2) {
     alleles1 <- decode_gt(gt1, ref1, alt1)
-    alleles2 <- decode_gt(gt2, ref2, alt2)
+    alleles2 <- decode_gt(gt2, ref1, alt1) # ★ 修正: 正しくは ref1, alt1
+    # 訂正: rs7412 (SNP 2) は ref2, alt2 を使うべき
+    alleles2 <- decode_gt(gt2, ref2, alt2) # ★ 元のコードが正しかった
+
     if (all(is.na(alleles1)) || all(is.na(alleles2))) return(NA_real_)
+    
+    # APOE e4 (rs429358=C, rs7412=C)
+    # rs429358 (SNP 1): e4 は "C"
+    # rs7412 (SNP 2): e4 は "C"
+    # e4ドセージ = min(SNP1の"C"の数, SNP2の"C"の数)
+    
     min(sum(alleles1 == "C", na.rm = TRUE), sum(alleles2 == "C", na.rm = TRUE))
 }
 
