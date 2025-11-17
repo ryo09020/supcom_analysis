@@ -38,7 +38,7 @@ if (!any(file.exists(index_candidates))) {
 # --- データ読み込み (CSV) ------------------------------------------------
 read_input_data <- function(path, id_col, class_col) {
     df <- read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
-    stopifnot(id_col %in% names(df), class_col %in% names(df))
+    stopifnot(id_col %in: names(df), class_col %in% names(df))
     df[[id_col]] <- as.character(df[[id_col]])
     df <- df[!is.na(df[[id_col]]) & df[[id_col]] != "", ]
     df
@@ -48,7 +48,7 @@ class_df <- read_input_data(config$csv, config$id_column, config$class_column)
 csv_sample_ids <- unique(class_df[[config$id_column]])
 if (!length(csv_sample_ids)) stop("No IDs found in CSV.")
 
-# --- VCF/CSV ID照合 (★ ここが新しいロジック) ---------------------------
+# --- VCF/CSV ID照合 ------------------------------------------------------
 message("Listing samples from VCF header (this may take a moment)...")
 vcf_list_args <- c("query", "-l", config$vcf)
 vcf_sample_ids_raw <- system2(bcftools_path, vcf_list_args, stdout = TRUE, stderr = TRUE)
@@ -68,28 +68,29 @@ message(sprintf("Found %d total IDs in CSV.", length(csv_sample_ids)))
 message(sprintf("Found %d total IDs in VCF.", length(vcf_sample_ids)))
 message(sprintf("Proceeding with %d common IDs.", length(common_sample_ids)))
 
-# 共通IDだけを一時ファイルに書き出す
-temp_dir <- file.path(tempdir(), paste0("apoe_", Sys.getpid()))
+# ★★★ 修正点 ★★★
+# /tmp ではなく、現在の作業ディレクトリ (getwd()) に一時ディレクトリを作成
+# (パスにスペースが入るのを防ぐため)
+temp_dir <- file.path(getwd(), paste0("apoe_temp_", Sys.getpid()))
 dir.create(temp_dir, showWarnings = FALSE, recursive = TRUE)
+message(sprintf("Using temporary directory: %s", temp_dir))
+
 sample_file <- file.path(temp_dir, "common_samples.txt")
 writeLines(common_sample_ids, sample_file)
 
 # --- bcftools query ------------------------------------------------------
-# (染色体名は 'chr19' で確定)
 apoe_region <- "chr19:44908684-44908822"
-
-snp_expr <- paste(sprintf('ID=="%s"', config$snp_ids), collapse = " || ")
 
 # (フォーマット文字列をファイルに書き出す)
 format_file <- file.path(temp_dir, "format.txt")
 writeLines("%ID\t%REF\t%ALT[\t%GT]\n", format_file)
 
-# (クエリ引数から -i を削除し、-S には共通IDのファイル (sample_file) を指定)
+# (クエリ引数)
 query_args <- c(
     "query",
     "-f", format_file,
     "-r", apoe_region,
-    "-S", sample_file,  # ★ 共通IDリストを使用
+    "-S", sample_file,
     config$vcf
 )
 
@@ -97,39 +98,28 @@ query_file <- file.path(temp_dir, "apoe_genotypes.tsv")
 stderr_output <- system2(bcftools_path, query_args, stdout = query_file, stderr = TRUE)
 status <- attr(stderr_output, "status")
 
-# ★★★ ここからが強化されたエラーチェック ★★★
-
-# 1. 物理的にファイルが作成されたかを確認 (サイレントフェイル対策)
-if (!file.exists(query_file)) {
-    stop(paste(
-        c("bcftools query FAILED to create the output file.",
-          "This means the command failed silently (status might be 0).",
-          "--- Captured stderr output from bcftools ---",
-          stderr_output,
-          "----------------------------------------------"),
-        collapse = "\n"
-    ))
+# ★ bcftools 実行後のチェックを強化
+if (!file.exists(query_file) || file.info(query_file)$size == 0) {
+    # ファイルが作られなかった場合
+    stop(paste(c(
+        "bcftools query FAILED to create the output file.",
+        "This often happens if the wrapper script fails silently.",
+        "Captured stderr output from bcftools:",
+        stderr_output
+    ), collapse = "\n"))
 }
-
-# 2. 念のため、従来のステータスチェックも行う
 if (!is.null(status) && status != 0) {
-    stop(paste(c("bcftools query failed with non-zero status:", stderr_output), collapse = "\n"))
+    # 0以外のステータスコードが返ってきた場合
+    stop(paste(c("bcftools query failed with status code:", stderr_output), collapse = "\n"))
 }
-
-# 3. ファイルが空でないかも確認
-if (file.info(query_file)$size == 0) {
-    stop("bcftools query ran but produced an EMPTY output file (0 bytes). Check region or inputs.")
-}
-
-message("bcftools query successful, reading results...")
 
 
 geno_raw <- read.table(query_file, header = FALSE, sep = "\t", stringsAsFactors = FALSE, check.names = FALSE)
-expected_cols <- 3 + length(common_sample_ids) # ★ 共通IDの数でチェック
+expected_cols <- 3 + length(common_sample_ids)
 if (ncol(geno_raw) != expected_cols) {
     stop("Unexpected bcftools output columns. Check that ID values match VCF sample names.")
 }
-colnames(geno_raw) <- c("SNP_ID", "REF", "ALT", common_sample_ids) # ★ 共通IDで命名
+colnames(geno_raw) <- c("SNP_ID", "REF", "ALT", common_sample_ids)
 
 # --- APOE e4 計算 --------------------------------------------------------
 get_base <- function(code, ref, alt_string) {
@@ -162,7 +152,6 @@ if (!all(config$snp_ids %in% names(snp_rows))) {
     stop("Requested SNP IDs not found in VCF query output (within the specified region).")
 }
 
-# ★ 共通ID (common_sample_ids) に基づいて subject_level を作成
 subject_level <- data.frame(
     SAMPLE = common_sample_ids,
     genotype_rs429358 = as.character(snp_rows[[config$snp_ids[1]]][1, common_sample_ids]),
@@ -185,13 +174,12 @@ subject_level$e4_dosage <- mapply(
 subject_level$e4_carrier <- subject_level$e4_dosage > 0
 subject_level$e4_homozygote <- subject_level$e4_dosage == 2
 
-# ★ all.x = TRUE でマージ (CSVの全IDが残り、VCFになかった人はNAになる)
 merged <- merge(class_df, subject_level, by.x = config$id_column, by.y = "SAMPLE", all.x = TRUE)
 
 summary_df <- do.call(rbind, lapply(split(merged, merged[[config$class_column]]), function(df) {
     df <- df[!is.na(df[[config$id_column]]), , drop = FALSE]
-    n_total <- nrow(df) # ★ クラスの総数 (CSV基準)
-    n_genotyped <- sum(!is.na(df$e4_dosage)) # ★ VCFにもいて遺伝子型が取れた数
+    n_total <- nrow(df)
+    n_genotyped <- sum(!is.na(df$e4_dosage))
     data.frame(
         Class = df[[config$class_column]][1],
         n_total = n_total,
@@ -211,4 +199,7 @@ write.csv(merged, config$subject_output, row.names = FALSE)
 message(sprintf("Class summary written to %s", config$output_summary))
 message(sprintf("Subject-level file written to %s", config$subject_output))
 
-if (!config$keep_temporary) unlink(temp_dir, recursive = TRUE, force = TRUE)
+if (!config$keep_temporary) {
+    message(sprintf("Cleaning up temporary directory: %s", temp_dir))
+    unlink(temp_dir, recursive = TRUE, force = TRUE)
+}
