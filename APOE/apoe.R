@@ -68,19 +68,21 @@ message(sprintf("Found %d total IDs in CSV.", length(csv_sample_ids)))
 message(sprintf("Found %d total IDs in VCF.", length(vcf_sample_ids)))
 message(sprintf("Proceeding with %d common IDs.", length(common_sample_ids)))
 
-# ★★★ 修正済みの行 ★★★
-# paste0 と アンダースコア(_) を使い、パスにスペースが入らないようにする
-temp_dir <- file.path(getwd(), paste0("apoe_temp_", Sys.getpid()))
+# ★★★ 最終修正点 ★★★
+# PID (Sys.getpid()) の使用を中止し、スペースの入る余地のない固定名に変更
+temp_dir <- file.path(getwd(), "apoe_temp_dir_fixed")
 dir.create(temp_dir, showWarnings = FALSE, recursive = TRUE)
 
-# ★★★ 確認用メッセージ (これが表示されるはず) ★★★
-message(sprintf("Using temporary directory: %s", temp_dir))
+message(sprintf("Using temporary directory: %s", temp_dir)) # 確認用
 
 sample_file <- file.path(temp_dir, "common_samples.txt")
 writeLines(common_sample_ids, sample_file)
 
 # --- bcftools query ------------------------------------------------------
-apoe_region <- "chr19:44908684-44908822"
+apoe_region <- "chr19:44930000-44931000" # 念のため座標をGRCh37/hg19に更新 (rs429358: 44908684 (38) vs 45411941 (37))
+#GRCh38: rs429358 (19:44908684), rs7412 (19:44908822)
+apoe_region <- "chr19:44908684-44908822" # 元の座標に戻します (あなたが'chr'付きで動いたと言っていたため)
+
 
 # (フォーマット文字列をファイルに書き出す)
 format_file <- file.path(temp_dir, "format.txt")
@@ -143,10 +145,7 @@ decode_gt <- function(gt, ref, alt) {
 
 calc_e4_dosage <- function(gt1, gt2, ref1, alt1, ref2, alt2) {
     alleles1 <- decode_gt(gt1, ref1, alt1)
-    alleles2 <- decode_gt(gt2, ref1, alt1) # ★ 修正: 正しくは ref1, alt1
-    # 訂正: rs7412 (SNP 2) は ref2, alt2 を使うべき
-    alleles2 <- decode_gt(gt2, ref2, alt2) # ★ 元のコードが正しかった
-
+    alleles2 <- decode_gt(gt2, ref2, alt2) 
     if (all(is.na(alleles1)) || all(is.na(alleles2))) return(NA_real_)
     
     # APOE e4 (rs429358=C, rs7412=C)
