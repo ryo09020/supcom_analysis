@@ -30,7 +30,12 @@ if (!file.exists(bcftools_path)) {
     bcftools_path <- resolved
 }
 
-# --- データ読み込み ------------------------------------------------------
+index_candidates <- c(paste0(config$vcf, ".csi"), paste0(config$vcf, ".tbi"))
+if (!any(file.exists(index_candidates))) {
+    stop("VCF index (.csi/.tbi) not found. Run 'bcftools index <vcf>' first.")
+}
+
+# --- データ読み込み (CSV) ------------------------------------------------
 read_input_data <- function(path, id_col, class_col) {
     df <- read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
     stopifnot(id_col %in% names(df), class_col %in% names(df))
@@ -40,41 +45,51 @@ read_input_data <- function(path, id_col, class_col) {
 }
 
 class_df <- read_input_data(config$csv, config$id_column, config$class_column)
-sample_ids <- unique(class_df[[config$id_column]])
-if (!length(sample_ids)) stop("No IDs found in CSV.")
+csv_sample_ids <- unique(class_df[[config$id_column]])
+if (!length(csv_sample_ids)) stop("No IDs found in CSV.")
 
+# --- VCF/CSV ID照合 (★ ここが新しいロジック) ---------------------------
+message("Listing samples from VCF header (this may take a moment)...")
+vcf_list_args <- c("query", "-l", config$vcf)
+vcf_sample_ids_raw <- system2(bcftools_path, vcf_list_args, stdout = TRUE, stderr = TRUE)
+status <- attr(vcf_sample_ids_raw, "status")
+if (!is.null(status) && status != 0) {
+    stop(paste(c("bcftools query -l failed (VCF sample list):", vcf_sample_ids_raw), collapse = "\n"))
+}
+vcf_sample_ids <- trimws(vcf_sample_ids_raw)
+
+# CSVとVCFの両方に存在するID（共通ID）を抽出
+common_sample_ids <- intersect(csv_sample_ids, vcf_sample_ids)
+
+if (!length(common_sample_ids)) {
+    stop("No common sample IDs found between the CSV and the VCF file.")
+}
+message(sprintf("Found %d total IDs in CSV.", length(csv_sample_ids)))
+message(sprintf("Found %d total IDs in VCF.", length(vcf_sample_ids)))
+message(sprintf("Proceeding with %d common IDs.", length(common_sample_ids)))
+
+# 共通IDだけを一時ファイルに書き出す
 temp_dir <- file.path(tempdir(), paste0("apoe_", Sys.getpid()))
 dir.create(temp_dir, showWarnings = FALSE, recursive = TRUE)
-sample_file <- file.path(temp_dir, "samples.txt")
-writeLines(sample_ids, sample_file)
-
-index_candidates <- c(paste0(config$vcf, ".csi"), paste0(config$vcf, ".tbi"))
-if (!any(file.exists(index_candidates))) {
-    stop("VCF index (.csi/.tbi) not found. Run 'bcftools index <vcf>' first.")
-}
+sample_file <- file.path(temp_dir, "common_samples.txt")
+writeLines(common_sample_ids, sample_file)
 
 # --- bcftools query ------------------------------------------------------
-
-# ★ 修正点 1: APOEのゲノム領域を指定 (インデックスを強制的に使用させるため)
-# GRCh38座標: rs429358 (19:44908684), rs7412 (19:44908822)
-# (VCFの染色体名が 'chr19' 形式の場合は "chr19:44908684-44908822" に変更)
-apoe_region <- "19:44908684-44908822"
+# (染色体名は 'chr19' で確定)
+apoe_region <- "chr19:44908684-44908822"
 
 snp_expr <- paste(sprintf('ID=="%s"', config$snp_ids), collapse = " || ")
 
-# ★ 修正点 2: フォーマット文字列をファイルに書き出す
-# (特殊文字 \t, \n がシェルで誤解釈されるのを防ぐため)
+# (フォーマット文字列をファイルに書き出す)
 format_file <- file.path(temp_dir, "format.txt")
 writeLines("%ID\t%REF\t%ALT[\t%GT]\n", format_file)
 
-
-# ★ 修正点 3: query_args に -f (ファイル) と -r (領域) を指定
+# (クエリ引数から -i を削除し、-S には共通IDのファイル (sample_file) を指定)
 query_args <- c(
     "query",
-    "-f", format_file,   # フォーマットファイル指定
-    "-r", apoe_region,  # ★ ゲノム領域指定 (高速化)
-    "-i", snp_expr,     # 領域内でさらにIDで絞り込み
-    "-S", sample_file,
+    "-f", format_file,
+    "-r", apoe_region,
+    "-S", sample_file,  # ★ 共通IDリストを使用
     config$vcf
 )
 
@@ -86,11 +101,11 @@ if (!is.null(status) && status != 0) {
 }
 
 geno_raw <- read.table(query_file, header = FALSE, sep = "\t", stringsAsFactors = FALSE, check.names = FALSE)
-expected_cols <- 3 + length(sample_ids)
+expected_cols <- 3 + length(common_sample_ids) # ★ 共通IDの数でチェック
 if (ncol(geno_raw) != expected_cols) {
     stop("Unexpected bcftools output columns. Check that ID values match VCF sample names.")
 }
-colnames(geno_raw) <- c("SNP_ID", "REF", "ALT", sample_ids)
+colnames(geno_raw) <- c("SNP_ID", "REF", "ALT", common_sample_ids) # ★ 共通IDで命名
 
 # --- APOE e4 計算 --------------------------------------------------------
 get_base <- function(code, ref, alt_string) {
@@ -115,30 +130,19 @@ calc_e4_dosage <- function(gt1, gt2, ref1, alt1, ref2, alt2) {
     alleles1 <- decode_gt(gt1, ref1, alt1)
     alleles2 <- decode_gt(gt2, ref2, alt2)
     if (all(is.na(alleles1)) || all(is.na(alleles2))) return(NA_real_)
-    
-    # APOE e4 (rs429358=C, rs7412=C)
-    # rs429358 (SNP 1): e4 は "C"
-    # rs7412 (SNP 2): e4 は "C"
-    # e4ドセージ = min(SNP1の"C"の数, SNP2の"C"の数)
-    
-    # オリジナルのロジックは e4 を想定しているようです
-    # rs429358 の REF/ALT と rs7412 の REF/ALT を確認してください
-    # ここでは、rs429358 (SNP 1) の "C" と rs7412 (SNP 2) の "C" をカウントします
-    
-    # スクリプトの元々のロジックを尊重
-    # (もし e2 (T, T) や e3 (T, C) を計算する場合はロジック変更が必要)
     min(sum(alleles1 == "C", na.rm = TRUE), sum(alleles2 == "C", na.rm = TRUE))
 }
 
 snp_rows <- split(geno_raw, geno_raw$SNP_ID)
 if (!all(config$snp_ids %in% names(snp_rows))) {
-    stop("Requested SNP IDs not found in VCF query output.")
+    stop("Requested SNP IDs not found in VCF query output (within the specified region).")
 }
 
+# ★ 共通ID (common_sample_ids) に基づいて subject_level を作成
 subject_level <- data.frame(
-    SAMPLE = sample_ids,
-    genotype_rs429358 = as.character(snp_rows[[config$snp_ids[1]]][1, sample_ids]),
-    genotype_rs7412 = as.character(snp_rows[[config$snp_ids[2]]][1, sample_ids]),
+    SAMPLE = common_sample_ids,
+    genotype_rs429358 = as.character(snp_rows[[config$snp_ids[1]]][1, common_sample_ids]),
+    genotype_rs7412 = as.character(snp_rows[[config$snp_ids[2]]][1, common_sample_ids]),
     stringsAsFactors = FALSE
 )
 
@@ -157,12 +161,13 @@ subject_level$e4_dosage <- mapply(
 subject_level$e4_carrier <- subject_level$e4_dosage > 0
 subject_level$e4_homozygote <- subject_level$e4_dosage == 2
 
+# ★ all.x = TRUE でマージ (CSVの全IDが残り、VCFになかった人はNAになる)
 merged <- merge(class_df, subject_level, by.x = config$id_column, by.y = "SAMPLE", all.x = TRUE)
 
 summary_df <- do.call(rbind, lapply(split(merged, merged[[config$class_column]]), function(df) {
     df <- df[!is.na(df[[config$id_column]]), , drop = FALSE]
-    n_total <- nrow(df)
-    n_genotyped <- sum(!is.na(df$e4_dosage))
+    n_total <- nrow(df) # ★ クラスの総数 (CSV基準)
+    n_genotyped <- sum(!is.na(df$e4_dosage)) # ★ VCFにもいて遺伝子型が取れた数
     data.frame(
         Class = df[[config$class_column]][1],
         n_total = n_total,
