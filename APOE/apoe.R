@@ -95,24 +95,35 @@ run_command <- function(cmd, args, stdout = NULL) {
 }
 
 if (!index_exists) {
-	message("Index not found. Creating bcftools index...")
-	run_command(
-		bcftools_path,
-		c("index", sprintf("--threads=%d", cfg$threads), cfg$vcf)
-	)
+	stop(paste0(
+		"No VCF index (.csi or .tbi) was found next to ", cfg$vcf,
+		". Please create one manually, e.g.\n",
+		"  bcftools index ", cfg$vcf
+	))
 }
 
 query_file <- file.path(temp_dir, "apoe_genotypes.tsv")
 filter_clause <- paste(sprintf('ID=="%s"', snp_ids), collapse = " || ")
 
+thread_flag <- NULL
+if (!is.null(cfg$threads) && !is.na(cfg$threads)) {
+	if (cfg$threads > 1) {
+		thread_flag <- sprintf("--threads=%d", cfg$threads)
+	} else {
+		message("Note: cfg$threads <= 1 so the --threads flag is omitted. Set to a value >1 if your bcftools supports threading.")
+	}
+}
+
 query_args <- c(
 	"query",
-	sprintf("--threads=%d", cfg$threads),
+	thread_flag,
 	"-f", "%ID\t%REF\t%ALT[\t%GT]\n",
 	"-i", filter_clause,
 	"-S", sample_file,
 	cfg$vcf
 )
+
+query_args <- query_args[!is.null(query_args) & nzchar(query_args)]
 
 run_command(bcftools_path, query_args, stdout = query_file)
 
