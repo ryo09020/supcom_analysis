@@ -123,6 +123,14 @@ clean_finaledu <- function(input_csv,
 
 	cleaned_df <- converted_df[!invalid_rows, , drop = FALSE]
 
+	# ID重複を先頭のみ残して除去
+	if (any(duplicated(cleaned_df[[id_column]]))) {
+		before <- nrow(cleaned_df)
+		cleaned_df <- cleaned_df[!duplicated(cleaned_df[[id_column]]), , drop = FALSE]
+		after <- nrow(cleaned_df)
+		message(sprintf("ID重複を除去しました（先頭のみ残す）: %d → %d", before, after))
+	}
+
 	message(sprintf("元の行数: %d", nrow(raw_df)))
 	message(sprintf("数値変換で削除された行数: %d", dropped_rows))
 	message(sprintf("クリーンデータの行数: %d", nrow(cleaned_df)))
