@@ -25,35 +25,38 @@ library(viridis)
 
 # ▼ ユーザーが設定する項目 ▼
 # CSVファイルのパス
-file_path <- "raw_data/dummy_data.csv"
+file_path <- "final_ver/raw_data/dummy_data_with_clusters_sorted.csv"
 
 # クラスター列の名前
 cluster_column <- "Class"
 
 # 分析したい項目名（複数選択可能）
-target_items <- c("X542690_00", "X542700_00", "X542710_00", "X542720_00", "X542730_00")
+target_items <- c("X542690_00", "X542700_00", "X542710_00","X542720_00","X542730_00")
+
+# 図に表示する際の項目ラベル（target_itemsと同じ順序で指定。空の場合は列名を使用）
+target_item_labels <- c(
+  "X542690_00",
+  "X542700_00",
+  "X542710_00",
+  "X542720_00",
+  "X542730_00"
+)
 
 # 項目カテゴリの指定（リスク因子/保護因子など）
 risk_factor_items <- c("X542690_00", "X542700_00")
 protective_factor_items <- c("X542710_00", "X542720_00", "X542730_00")
 
-# 項目ラベル（凡例・軸用）。必要に応じて値を書き換えてください
-item_labels <- c(
-  X542690_00 = "X542690_00",
-  X542700_00 = "X542700_00",
-  X542710_00 = "X542710_00",
-  X542720_00 = "X542720_00",
-  X542730_00 = "X542730_00"
-)
-
 # 共変量として調整したい項目（例：性別、年齢など）
-covariates <- c( "age")
+covariates <- c()
 
 # 図のタイトル
 plot_title <- "Z-score of cluster-specific item values (adjusted for covariates)"
 
 # 出力ファイル名のプレフィックス
 output_prefix <- "cluster_zscore"
+
+# 図・CSVを保存するディレクトリ（存在しない場合は自動で作成されます）
+output_dir <- "cluster_zscore_output"
 
 
 # -------------------------------------------------------------------------
@@ -111,39 +114,41 @@ if (length(duplicated_assignments) > 0) {
   )
 }
 
-# 項目ラベルの整備
-if (length(item_labels) == 0) {
-  item_labels <- setNames(target_items, target_items)
-}
+# 項目ラベルの整備（target_items直後で指定したラベルを使用）
+item_label_lookup <- setNames(target_items, target_items)
 
-if (is.null(names(item_labels)) || any(names(item_labels) == "")) {
-  stop("item_labels は target_items と同じ名前を持つ名前付きベクトルで指定してください。", call. = FALSE)
-}
+if (length(target_item_labels) > 0) {
+  if (!is.null(names(target_item_labels)) && any(names(target_item_labels) != "")) {
+    missing_label_items <- setdiff(target_items, names(target_item_labels))
+    if (length(missing_label_items) > 0) {
+      warning(
+        "target_item_labels に指定されていない項目があります。該当項目は列名をラベルとして使用します: ",
+        paste(missing_label_items, collapse = ", "),
+        call. = FALSE
+      )
+    }
 
-missing_label_items <- setdiff(target_items, names(item_labels))
-if (length(missing_label_items) > 0) {
-  warning(
-    "item_labels に指定されていない項目があります。該当項目は列名をラベルとして使用します: ",
-    paste(missing_label_items, collapse = ", "),
-    call. = FALSE
-  )
-  item_labels <- c(item_labels, setNames(missing_label_items, missing_label_items))
-}
+    extra_label_items <- setdiff(names(target_item_labels), target_items)
+    if (length(extra_label_items) > 0) {
+      warning(
+        "target_items に含まれない項目が target_item_labels に指定されています（無視されます）: ",
+        paste(extra_label_items, collapse = ", "),
+        call. = FALSE
+      )
+    }
 
-extra_label_items <- setdiff(names(item_labels), target_items)
-if (length(extra_label_items) > 0) {
-  warning(
-    "target_items に含まれない項目が item_labels に指定されています（無視されます）: ",
-    paste(extra_label_items, collapse = ", "),
-    call. = FALSE
-  )
+    overlap_items <- intersect(target_items, names(target_item_labels))
+    item_label_lookup[overlap_items] <- target_item_labels[overlap_items]
+  } else {
+    if (length(target_item_labels) != length(target_items)) {
+      stop("target_item_labels の長さは target_items と一致させてください。", call. = FALSE)
+    }
+    item_label_lookup <- setNames(target_item_labels, target_items)
+  }
 }
-
-item_label_lookup <- item_labels[target_items]
-item_label_lookup[is.na(item_label_lookup)] <- target_items[is.na(item_label_lookup)]
 
 if (anyDuplicated(item_label_lookup) > 0) {
-  warning("item_labels の値が重複しています。凡例や軸でラベルが重複して表示されます。", call. = FALSE)
+  warning("target_item_labels の値が重複しています。凡例や軸でラベルが重複して表示されます。", call. = FALSE)
 }
 
 legend_labels <- unname(item_label_lookup)
@@ -209,18 +214,24 @@ for (item in target_items) {
   cat(paste("項目", item, "を調整中...\n"))
   
   # 共変量を含む回帰式を作成
-  covariates_formula <- paste(covariates, collapse = " + ")
-  formula_str <- paste(item, "~", covariates_formula)
-  
-  # 線形回帰モデルを実行
-  lm_model <- lm(as.formula(formula_str), data = analysis_data)
-  
-  # 残差を計算（共変量の影響を除去した値）
-  residuals_value <- residuals(lm_model)
-  
-  # 全体平均を加えて調整済み値を計算
-  adjusted_values <- residuals_value + mean(analysis_data[[item]], na.rm = TRUE)
-  
+  # 共変量が指定されていない場合は調整をスキップ
+  if (length(covariates) == 0) {
+    # 共変量調整なし: 元の値をそのまま使用
+    adjusted_values <- analysis_data[[item]]
+  } else {
+    # 共変量を含む回帰式を作成
+    covariates_formula <- paste(covariates, collapse = " + ")
+    formula_str <- paste(item, "~", covariates_formula)
+
+    # 線形回帰モデルを実行
+    lm_model <- lm(as.formula(formula_str), data = analysis_data)
+
+    # 残差を計算（共変量の影響を除去した値）
+    residuals_value <- residuals(lm_model)
+
+    # 全体平均を加えて調整済み値を計算
+    adjusted_values <- residuals_value + mean(analysis_data[[item]], na.rm = TRUE)
+  }
   # 調整済みデータに保存
   adjusted_data[[item]] <- adjusted_values
 }
@@ -302,7 +313,104 @@ print(summary_stats)
 
 
 # -------------------------------------------------------------------------
-# Step 6: 棒グラフの作成
+# Step 6: 素点ロングデータの作成（バイオリンプロット用）
+# -------------------------------------------------------------------------
+
+raw_plot_data <- adjusted_data %>%
+  select(all_of(c(cluster_column, target_items))) %>%
+  pivot_longer(
+    cols = all_of(target_items),
+    names_to = "Item",
+    values_to = "Value"
+  ) %>%
+  mutate(
+    Item = factor(Item, levels = target_items),
+    Cluster = factor(!!sym(cluster_column))
+  ) %>%
+  left_join(item_category_df, by = "Item") %>%
+  mutate(
+    Item_Label = dplyr::recode(as.character(Item), !!!label_replacements, .default = as.character(Item)),
+    Item_Label = factor(Item_Label, levels = item_label_lookup)
+  )
+
+
+# -------------------------------------------------------------------------
+# Step 7: 箱ひげ図の作成（素点）
+# -------------------------------------------------------------------------
+
+cat("素点を用いた箱ひげ図を作成中...\n")
+
+boxplot_plot <- ggplot(raw_plot_data, aes(x = Cluster, y = Value, fill = Cluster)) +
+  geom_boxplot(alpha = 0.75, outlier.alpha = 0.45) +
+  stat_summary(
+    fun = mean,
+    geom = "point",
+    shape = 23,
+    size = 3,
+    fill = "white",
+    color = "black"
+  ) +
+  facet_wrap(~ Item_Label, scales = "free_y") +
+  scale_fill_viridis_d(name = "Cluster") +
+  labs(
+    title = paste(plot_title, "(raw-score boxplot)"),
+    subtitle = "◇: Mean value, Raw score scale after covariate adjustment",
+    x = "Cluster",
+    y = "Adjusted Raw Score"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),
+    plot.subtitle = element_text(size = 12, hjust = 0.5),
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12),
+    strip.text = element_text(size = 13),
+    legend.position = "bottom",
+    legend.title = element_text(size = 13),
+    legend.text = element_text(size = 11)
+  )
+
+
+# -------------------------------------------------------------------------
+# Step 8: バイオリンプロットの作成（素点）
+# -------------------------------------------------------------------------
+
+cat("素点を用いたバイオリンプロットを作成中...\n")
+
+violin_plot <- ggplot(raw_plot_data, aes(x = Cluster, y = Value, fill = Cluster)) +
+  geom_violin(alpha = 0.7, trim = FALSE) +
+  geom_boxplot(width = 0.12, fill = "white", color = "black", alpha = 0.7) +
+  stat_summary(
+    fun = mean,
+    geom = "point",
+    shape = 23,
+    size = 2.5,
+    fill = "red",
+    color = "black"
+  ) +
+  facet_wrap(~ Item_Label, scales = "free_y") +
+  scale_fill_viridis_d(name = "Cluster") +
+  labs(
+    title = paste(plot_title, "(raw-score violin)"),
+    subtitle = "◇: Mean value, Raw score scale after covariate adjustment",
+    x = "Cluster",
+    y = "Adjusted Raw Score"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5),
+    plot.subtitle = element_text(size = 12, hjust = 0.5),
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12),
+    strip.text = element_text(size = 13),
+    legend.position = "bottom",
+    legend.title = element_text(size = 13),
+    legend.text = element_text(size = 11)
+  )
+
+
+# -------------------------------------------------------------------------
+# Step 9: 棒グラフの作成
 # -------------------------------------------------------------------------
 
 cat("Z-score棒グラフを作成中...\n")
@@ -329,16 +437,20 @@ p1 <- ggplot(summary_stats, aes(x = Item, y = Mean_ZScore, fill = Item)) +
   ) +
   theme_minimal() +
   theme(
-    plot.title = element_text(size = 14, hjust = 0.5),
-    plot.subtitle = element_text(size = 10, hjust = 0.5),
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    strip.text = element_text(size = 12),
-    legend.position = "bottom"
+    plot.title = element_text(size = 16, hjust = 0.5),
+    plot.subtitle = element_text(size = 12, hjust = 0.5),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
+    axis.text.y = element_text(size = 12),
+    axis.title = element_text(size = 14),
+    strip.text = element_text(size = 13),
+    legend.position = "bottom",
+    legend.title = element_text(size = 13),
+    legend.text = element_text(size = 11)
   )
 
 
 # -------------------------------------------------------------------------
-# Step 7: 統計的検定
+# Step 10: 統計的検定
 # -------------------------------------------------------------------------
 
 cat("\n=== 統計的検定結果（Z-score） ===\n")
@@ -372,18 +484,43 @@ for (item in target_items) {
 
 
 # -------------------------------------------------------------------------
-# Step 8: 図の保存
+# Step 11: 図の保存
 # -------------------------------------------------------------------------
+
+# 出力ディレクトリを作成（必要なら）
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir, recursive = TRUE)
+  cat(paste("出力ディレクトリを作成しました:", normalizePath(output_dir), "\n"))
+}
 
 # ファイルサイズを調整（クラスター数と項目数に応じて）
 width_size <- max(12, length(target_items) * n_clusters * 0.8)
 height_size <- 8
 
+# 箱ひげ図の保存
+boxplot_width <- max(12, n_clusters * 3)
+boxplot_height <- max(6, ceiling(length(target_items) / 2) * 4)
+boxplot_filename <- paste0(output_prefix, "_boxplot_raw.png")
+boxplot_path <- file.path(output_dir, boxplot_filename)
+cat(paste("Saving raw-score boxplot as:", boxplot_path, "\n"))
+ggsave(
+  filename = boxplot_path,
+  plot = boxplot_plot,
+  width = boxplot_width,
+  height = boxplot_height,
+  units = "in",
+  dpi = 300,
+  bg = "white"
+)
+cat(paste("Saved", boxplot_path, "\n"))
+
 cat("\nZ-score棒グラフを保存中...\n")
 
 # 全データを一つの棒グラフとして保存
+all_clusters_filename <- paste0(output_prefix, "_all_clusters.png")
+all_clusters_path <- file.path(output_dir, all_clusters_filename)
 ggsave(
-  filename = paste0(output_prefix, "_all_clusters.png"),
+  filename = all_clusters_path,
   plot = p1,
   width = width_size,
   height = height_size,
@@ -391,34 +528,55 @@ ggsave(
   dpi = 300,
   bg = "white"
 )
-cat(paste("Saved", paste0(output_prefix, "_all_clusters.png"), "\n"))
+cat(paste("Saved", all_clusters_path, "\n"))
+
+# バイオリンプロットを保存
+violin_width <- max(12, n_clusters * 3)
+violin_height <- max(6, ceiling(length(target_items) / 2) * 4)
+violin_filename <- paste0(output_prefix, "_violin_raw.png")
+violin_path <- file.path(output_dir, violin_filename)
+cat(paste("Saving raw-score violin plot as:", violin_path, "\n"))
+ggsave(
+  filename = violin_path,
+  plot = violin_plot,
+  width = violin_width,
+  height = violin_height,
+  units = "in",
+  dpi = 300,
+  bg = "white"
+)
+cat(paste("Saved", violin_path, "\n"))
 
 
 # -------------------------------------------------------------------------
-# Step 9: 結果の要約をCSVとして保存
+# Step 12: 結果の要約をCSVとして保存
 # -------------------------------------------------------------------------
 
 # 統計結果をCSVとして保存
 summary_filename <- paste0(output_prefix, "_summary.csv")
-write.csv(summary_stats, summary_filename, row.names = FALSE)
-cat(paste("統計要約を", summary_filename, "として保存しました。\n"))
+summary_path <- file.path(output_dir, summary_filename)
+write.csv(summary_stats, summary_path, row.names = FALSE)
+cat(paste("統計要約を", summary_path, "として保存しました。\n"))
 
 # z-score化されたデータも保存（オプション）
 zscore_filename <- paste0(output_prefix, "_data.csv")
-write.csv(zscore_data, zscore_filename, row.names = FALSE)
-cat(paste("Z-score化されたデータを", zscore_filename, "として保存しました。\n"))
+zscore_path <- file.path(output_dir, zscore_filename)
+write.csv(zscore_data, zscore_path, row.names = FALSE)
+cat(paste("Z-score化されたデータを", zscore_path, "として保存しました。\n"))
 
 
 # -------------------------------------------------------------------------
-# Step 10: 実行完了メッセージ
+# Step 13: 実行完了メッセージ
 # -------------------------------------------------------------------------
 
 cat("\n=== スクリプト実行完了 ===\n")
 cat("作成された図:\n")
-cat(paste("1. 全クラスター統合棒グラフ (", paste0(output_prefix, "_all_clusters.png"), ")\n", sep=""))
+cat(paste("1. 素点箱ひげ図 (", boxplot_path, ")\n", sep=""))
+cat(paste("2. 素点バイオリンプロット (", violin_path, ")\n", sep=""))
+cat(paste("3. 全クラスター統合棒グラフ (", all_clusters_path, ")\n", sep=""))
 cat("\n保存されたデータ:\n")
-cat(paste("1. 統計要約 (", summary_filename, ")\n", sep=""))
-cat(paste("2. Z-score化データ (", zscore_filename, ")\n", sep=""))
+cat(paste("1. 統計要約 (", summary_path, ")\n", sep=""))
+cat(paste("2. Z-score化データ (", zscore_path, ")\n", sep=""))
 cat("\n共変量調整とZ-score化により、標準化された比較が可能になりました。\n")
 cat("Z-score = 0が全体平均を表し、正の値は平均より高く、負の値は平均より低いことを示します。\n")
 cat("全てのクラスターと項目が一つのグラフに統合されています。\n")
