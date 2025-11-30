@@ -80,6 +80,15 @@ SCALE_CONFIG <- list(
             "542940_00" = "Fatigue",
             "542950_00" = "Confusion"
         )
+    ),
+    "STSS" = list(
+        name = "STSS",
+        items = list(
+            "543120_00" = "Diff. Ident. Bodily Sensations",
+            "543130_00" = "Over-adaptation",
+            "543140_00" = "Lack of Health Mgmt",
+            "543150_00" = "Total Score"
+        )
     )
 )
 
