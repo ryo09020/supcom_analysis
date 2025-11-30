@@ -5,7 +5,7 @@ suppressPackageStartupMessages({
 	library(readr)
 })
 
-invisible(utils::globalVariables("final_education"))
+invisible(utils::globalVariables(c("final_education", "final_edu_int")))
 
 # ================================================================
 # 設定値
@@ -16,7 +16,7 @@ INPUT_FILE <- "raw_data/dummy_data.csv"  # 分析したいCSVファイルのパ�
 
 
 # 出力ファイル名に付与するサフィックス
-OUTPUT_SUFFIX <- "_edusorted"
+OUTPUT_SUFFIX <- "_intedu"
 
 # ---------------------------------------------------------------
 # final_education の値を学歴年数に変換
@@ -51,7 +51,7 @@ process_final_education <- function(input_path) {
 	}
 
 	transformed <- data %>%
-		mutate(final_education = map_final_education(.data$final_education))
+		mutate(final_edu_int = map_final_education(.data$final_education))
 
 	output_path <- file.path(
 		dirname(input_path),
@@ -65,11 +65,11 @@ process_final_education <- function(input_path) {
 	cat(sprintf("   出力:  %s\n", normalizePath(output_path)))
 
 		summary_table <- transformed %>%
-			group_by(.data$final_education) %>%
+			group_by(.data$final_education, .data$final_edu_int) %>%
 			summarise(count = dplyr::n(), .groups = "drop") %>%
 			arrange(.data$final_education)
 
-	cat("\n--- final_education の分布 ---\n")
+	cat("\n--- final_education と final_edu_int の対応分布 ---\n")
 	print(summary_table, n = nrow(summary_table))
 
 	invisible(output_path)
