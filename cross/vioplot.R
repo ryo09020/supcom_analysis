@@ -95,7 +95,8 @@ SCALE_CONFIG <- list(
 # 5. 共変量（データに含まれていることを確認する列）
 COVARIATES <- c("age", "sex", "finaledu_int")
 
-# 6. 出力ファイル名（自動生成されますが、手動で指定も可能）
+# 6. 出力設定
+OUTPUT_DIR <- "plots" # 出力先のフォルダ名
 OUTPUT_FILE <- NULL # NULLの場合、自動生成: "ScaleName_violin_plots.png"
 
 # ==============================================================================
@@ -258,10 +259,17 @@ main <- function() {
     cat(sprintf("📌 Selected Scale: %s\n", scale_name))
 
     # 出力ファイル名の決定
+    output_dir <- OUTPUT_DIR
+    if (!dir.exists(output_dir)) {
+        dir.create(output_dir, recursive = TRUE)
+    }
+
     output_file <- OUTPUT_FILE
     if (is.null(output_file)) {
         output_file <- paste0(scale_name, "_violin_plots.png")
     }
+
+    full_output_path <- file.path(output_dir, output_file)
 
     # 1. データ読み込み
     df <- load_and_prep_data(INPUT_FILE, CLASS_COLUMN, target_items, COVARIATES)
@@ -295,8 +303,8 @@ main <- function() {
         )
 
     # 4. 保存
-    ggsave(output_file, combined_plot, width = 12, height = 6, dpi = 300)
-    cat(sprintf("\n✅ プロットを保存しました: %s\n", normalizePath(output_file)))
+    ggsave(full_output_path, combined_plot, width = 12, height = 6, dpi = 300)
+    cat(sprintf("\n✅ プロットを保存しました: %s\n", normalizePath(full_output_path)))
     cat("=== Done ===\n")
 }
 
