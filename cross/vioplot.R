@@ -30,8 +30,7 @@ INPUT_FILE <- "raw_data/dummy_data_with_clusters_sorted.csv"
 CLASS_COLUMN <- "Class"
 
 # 3. 使用する検査票の選択
-#    以下のリストから選択してください: "DASS-15", "GHQ-30", "TAC-24", "IES-R", "POMS"
-SELECTED_SCALE <- "DASS-15"
+#    (SCALE_CONFIG内の全ての検査票を順次処理します)
 
 # 4. 各検査票の設定（コードとラベル）
 SCALE_CONFIG <- list(
@@ -92,11 +91,11 @@ SCALE_CONFIG <- list(
 )
 
 # 5. 共変量（データに含まれていることを確認する列）
-COVARIATES <- c("age", "sex", "finaledu_int")
+COVARIATES <- c("age", "sex", "final_edu_int")
 
 # 6. 出力設定
 OUTPUT_DIR <- "plots" # 出力先のフォルダ名
-OUTPUT_FILE <- NULL # NULLの場合、自動生成: "ScaleName_violin_plots.png"
+# OUTPUT_FILE は自動生成されるため削除
 
 # ==============================================================================
 # 関数定義
@@ -158,19 +157,13 @@ calc_adjusted_means <- function(data, item_col, class_col, covariates) {
     return(emm_df)
 }
 
-# ==============================================================================
-# メイン処理
-# ==============================================================================
-
-main <- function() {
-    cat("=== Violin Plot Generation Started ===\n")
+# 検査票ごとの処理関数
+process_scale <- function(scale_name) {
+    cat(sprintf("\n=== Processing Scale: %s ===\n", scale_name))
 
     # 設定の読み込み
-    config <- get_scale_config(SELECTED_SCALE)
+    config <- get_scale_config(scale_name)
     target_items <- config$items
-    scale_name <- config$name
-
-    cat(sprintf("📌 Selected Scale: %s\n", scale_name))
 
     # 出力ファイル名の決定
     output_dir <- OUTPUT_DIR
@@ -178,14 +171,14 @@ main <- function() {
         dir.create(output_dir, recursive = TRUE)
     }
 
-    output_file <- OUTPUT_FILE
-    if (is.null(output_file)) {
-        output_file <- paste0(scale_name, "_violin_plots.png")
-    }
-
+    output_file <- paste0(scale_name, "_violin_plots.png")
     full_output_path <- file.path(output_dir, output_file)
 
     # 1. データ読み込み
+    # 注意: ここで毎回ファイルを読み込むのは非効率ですが、
+    # load_and_prep_data内で列の存在チェックを行っているため、
+    # 安全性を優先してそのままにします。
+    # (最適化するなら、mainで一度だけ読み込んで、必要な列チェックだけここで行うように変更できます)
     df <- load_and_prep_data(INPUT_FILE, CLASS_COLUMN, target_items, COVARIATES)
 
     # 2. データ整形と調整済み平均の計算
@@ -205,7 +198,8 @@ main <- function() {
     available_items <- intersect(names(target_items), names(df_subset))
 
     if (length(available_items) == 0) {
-        stop("❌ プロット可能な項目がデータに存在しません。")
+        warning(sprintf("⚠️ Scale '%s' のプロット可能な項目がデータに存在しません。スキップします。\n", scale_name))
+        return(NULL)
     }
 
     # ロング形式データ作成
@@ -246,15 +240,23 @@ main <- function() {
 
         if (nrow(item_data) > 0) {
             # 計算
-            means <- calc_adjusted_means(item_data, code, CLASS_COLUMN, COVARIATES)
-            means$item <- code
-            means$item_label <- target_items[[code]]
-            adj_means_list[[length(adj_means_list) + 1]] <- means
+            tryCatch(
+                {
+                    means <- calc_adjusted_means(item_data, code, CLASS_COLUMN, COVARIATES)
+                    means$item <- code
+                    means$item_label <- target_items[[code]]
+                    adj_means_list[[length(adj_means_list) + 1]] <- means
+                },
+                error = function(e) {
+                    warning(sprintf("⚠️ 項目 '%s' の調整済み平均計算でエラーが発生しました: %s\n", code, e$message))
+                }
+            )
         }
     }
 
     if (length(adj_means_list) == 0) {
-        stop("❌ 調整済み平均の計算に失敗しました（データ不足の可能性があります）。")
+        warning(sprintf("⚠️ Scale '%s' の調整済み平均の計算に失敗しました（データ不足の可能性があります）。スキップします。\n", scale_name))
+        return(NULL)
     }
 
     adj_means_df <- bind_rows(adj_means_list) %>%
@@ -297,8 +299,29 @@ main <- function() {
 
     # 4. 保存
     ggsave(full_output_path, p, width = 12, height = 8, dpi = 300)
-    cat(sprintf("\n✅ プロットを保存しました: %s\n", normalizePath(full_output_path)))
-    cat("=== Done ===\n")
+    cat(sprintf("✅ プロットを保存しました: %s\n", normalizePath(full_output_path)))
+}
+
+# ==============================================================================
+# メイン処理
+# ==============================================================================
+
+main <- function() {
+    cat("=== Violin Plot Generation Started (Batch Mode) ===\n")
+
+    # 全てのスケールを処理
+    for (scale_name in names(SCALE_CONFIG)) {
+        tryCatch(
+            {
+                process_scale(scale_name)
+            },
+            error = function(e) {
+                cat(sprintf("\n❌ Scale '%s' の処理中に予期せぬエラーが発生しました: %s\n", scale_name, e$message))
+            }
+        )
+    }
+
+    cat("\n=== All Done ===\n")
 }
 
 # スクリプト実行
