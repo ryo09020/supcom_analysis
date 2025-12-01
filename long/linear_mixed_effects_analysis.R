@@ -51,9 +51,8 @@ file_time1 <- "time1.csv"
 file_time2 <- "time2_with_class.csv"
 
 id_column <- "ID"
-class_column <- "Class"
-age_column <- "age"
-
+class_column <- "class_group" # Renamed from "class" to avoid conflict with base::class()
+age_column <- "age" # Added for filtering
 # Items to analyse
 target_items <- c(
   # IES-R
@@ -140,10 +139,14 @@ prepare_timepoint_data <- function(file_path, time_label, item_map, target_items
   message(sprintf("Reading %s (%s)...", time_label, file_path))
   df_raw <- readr::read_csv(file_path, show_col_types = FALSE)
 
-  # Standardize Class column name (Handle "Class" vs "class")
-  if (!class_column %in% names(df_raw) && "Class" %in% names(df_raw)) {
-    df_raw <- df_raw |> dplyr::rename(!!class_column := Class)
-    message(sprintf("   -> Renamed 'Class' to '%s'", class_column))
+  # Standardize Class column name (Handle "Class" vs "class" -> class_group)
+  # Check for "class" or "Class" and rename to class_column ("class_group")
+  if (!class_column %in% names(df_raw)) {
+    if ("class" %in% names(df_raw)) {
+      df_raw <- df_raw |> dplyr::rename(!!class_column := class)
+    } else if ("Class" %in% names(df_raw)) {
+      df_raw <- df_raw |> dplyr::rename(!!class_column := Class)
+    }
   }
 
   # Check columns
@@ -239,12 +242,13 @@ for (item in target_items) {
     next
   }
 
-  # Fit LME
-  # Model: Value ~ Time * Class + (1|ID)
-  tryCatch(
-    {
+      # Fit LME
+      # Model: Value ~ Time * Class + (1|ID)
+      # Use as.formula to avoid hardcoding variable names
+      f <- as.formula(paste("value ~ time *", class_column))
+      
       model <- nlme::lme(
-        fixed = value ~ time * class,
+        fixed = f,
         random = ~ 1 | ID,
         data = item_data,
         method = "REML",
@@ -256,17 +260,18 @@ for (item in target_items) {
 
       # Extract P-values
       p_time <- anova_res["time", "p-value"]
-      p_class <- anova_res["class", "p-value"]
-      p_interaction <- anova_res["time:class", "p-value"]
+      p_class <- anova_res[class_column, "p-value"]
+      p_interaction <- anova_res[paste0("time:", class_column), "p-value"]
 
       # Calculate Means by Group & Time
-      emm <- emmeans::emmeans(model, ~ time | class)
+      emm <- emmeans::emmeans(model, as.formula(paste("~ time |", class_column)))
       emm_df <- as.data.frame(emm)
 
       # Format Means for Summary
       # We want columns like: Class1_T1, Class1_T2, Class2_T1...
+      # Note: class column name is now dynamic
       means_wide <- emm_df |>
-        dplyr::mutate(label = paste0("Class", class, "_", gsub(" ", "", time))) |>
+        dplyr::mutate(label = paste0("Class", .data[[class_column]], "_", gsub(" ", "", time))) |>
         dplyr::select(label, emmean, SE) |>
         tidyr::pivot_wider(
           names_from = label,
