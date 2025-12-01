@@ -113,7 +113,7 @@ load_and_prep_data <- function(file_path, class_col, items, covariates) {
     }
 
     cat(sprintf("📁 データを読み込んでいます: %s\n", file_path))
-    data <- read_csv(file_path, show_col_types = FALSE)
+    data <- read_csv(file_path, na = c("", "NA", "."), show_col_types = FALSE)
 
     # 必須列の確認
     required_cols <- c(class_col, names(items), covariates)
