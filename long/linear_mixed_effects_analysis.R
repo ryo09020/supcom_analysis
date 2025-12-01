@@ -2,25 +2,31 @@
 # Linear mixed-effects analysis for longitudinal class comparisons
 # (Refactored for readability and specific item handling)
 #
-# 【結果の読み方ガイド】
+# 【結果の読み方ガイド：先行研究の表現との対応】
 #
-# 1. 「2時点の変化の仕方（プロファイルの変化）にクラス間で差があるか？」を知りたい場合
+# 1. 「2.3年間の追跡期間中、全体として認知機能に変化はなかった」
+#    (no change in global cognitive function... from baseline to follow-up)
 #    -> 出力ファイル: lmm_summary_readable.csv
-#    -> 見るべき列: **P_Interaction** (交互作用のP値)
-#    -> 理由: これが 0.05 未満（Sig_Interactionに"*"がある）なら、「クラスによって変化のパターンが統計的に有意に異なる」ことを意味します。
-#             （例：クラス1は悪化しているが、クラス2は変化なしか改善している、など）
+#    -> 見るべき列: **P_Time** (時間の主効果)
+#    -> 判定: P_Time > 0.05 なら「全体として有意な変化なし」
 #
-# 2. 「特定のクラスで、時系列の変化（Time 1 -> Time 2）が有意か？」を知りたい場合
-#    -> 出力ファイル: lmm_time_differences_by_class.csv
-#    -> 見るべき列: **p_value** (および estimate)
-#    -> 理由: ここにはクラスごとの「Time 2 - Time 1」の検定結果が出力されます。
-#             P値 < 0.05 なら、そのクラスにおいて「有意な変化があった」と言えます。
-#             estimate がプラスなら増加、マイナスなら減少です。
+# 2. 「心理学的プロファイルによる変化の違いは見られなかった（交互作用なし）」
+#    (a group-by-time interaction revealed no differences... according to psychological profile)
+#    -> 出力ファイル: lmm_summary_readable.csv
+#    -> 見るべき列: **P_Interaction** (交互作用)
+#    -> 判定: P_Interaction > 0.05 なら「クラスによって変化の仕方に違いはない（平行）」
 #
-# 3. 「全体としてクラス間に差があるか（常にどちらかが高い/低い）？」を知りたい場合
+# 3. 「心理学的プロファイルと認知機能の関連の安定性（クラス間の差は維持された）」
+#    (analyses revealed stability in the association... profile membership was associated with scores)
 #    -> 出力ファイル: lmm_summary_readable.csv
 #    -> 見るべき列: **P_Class** (クラスの主効果)
-#    -> 理由: これが有意なら、時点に関わらず「クラス間でスコアの平均的な高さに差がある」ことを示唆します。
+#    -> 判定: P_Class < 0.05 なら「時点に関わらず、クラス間でスコアに有意差がある」
+#
+# 4. 「プロファイル1はプロファイル3よりも認知機能が低かった」
+#    (individuals in profile 1 demonstrated worse... compared to those in profile 3)
+#    -> 出力ファイル: lmm_group_differences.csv (新規追加)
+#    -> 見るべき列: **contrast** (例: Class1 - Class3) と **p.value**
+#    -> 判定: P < 0.05 で、estimateがマイナスなら「前者の方が低い」
 #
 # ------------------------------------------------------------------
 
@@ -56,7 +62,7 @@ age_column <- "age" # Added for filtering
 # Items to analyse
 target_items <- c(
   # IES-R
-  "542850_00", "542860_00", "542870_00",
+  "542850_00", "542860_00", "542870_00", "542880_00",
   # GHQ-30
   "543010_00", "543020_00", "543030_00", "543040_00", "543050_00",
   # MMSE
@@ -118,11 +124,20 @@ time2_item_map <- c(
 )
 
 # Output locations
-output_dir <- "longitudinal_outputs"
+output_dir <- "results_lmm"
+if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
 output_summary_file <- "lmm_summary_readable.csv"
+output_contrasts_file <- "lmm_time_differences_by_class.csv"
+output_group_contrasts_file <- "lmm_group_differences.csv" # Added for Class A vs Class B
 output_details_file <- "lmm_details_full.csv"
 model_log_file <- "lmm_model_warnings.log"
 alpha_level <- 0.05
+
+# Initialize results containers
+results_list <- list()
+contrasts_list <- list()
+group_contrasts_list <- list() # Added container for group contrasts
 
 # ------------------------------------------------------------------
 # Data Preparation
@@ -242,11 +257,13 @@ for (item in target_items) {
     next
   }
 
-      # Fit LME
-      # Model: Value ~ Time * Class + (1|ID)
-      # Use as.formula to avoid hardcoding variable names
-      f <- as.formula(paste("value ~ time *", class_column))
-      
+  # Fit LME
+  # Model: Value ~ Time * Class + (1|ID)
+  # Use as.formula to avoid hardcoding variable names
+  f <- as.formula(paste("value ~ time *", class_column))
+
+  tryCatch(
+    {
       model <- nlme::lme(
         fixed = f,
         random = ~ 1 | ID,
@@ -266,6 +283,32 @@ for (item in target_items) {
       # Calculate Means by Group & Time
       emm <- emmeans::emmeans(model, as.formula(paste("~ time |", class_column)))
       emm_df <- as.data.frame(emm)
+
+      # Calculate Time Differences within each Class (Post-hoc)
+      # Contrast: Time 2 - Time 1 (or vice versa depending on factor level order)
+      # We want to see if the change is significant for each class.
+      time_contrasts <- pairs(emm, simple = "time")
+      contrasts_df <- as.data.frame(time_contrasts) |>
+        dplyr::mutate(
+          Item_Key = item,
+          Item_Label = label
+        ) |>
+        dplyr::select(Item_Key, Item_Label, everything())
+
+      contrasts_list[[item]] <- contrasts_df
+
+      # Calculate Group Differences (Class A vs Class B)
+      # This corresponds to "Profile 1 vs Profile 3"
+      # We average over time (main effect of class)
+      group_contrasts <- pairs(emm, simple = class_column)
+      group_contrasts_df <- as.data.frame(group_contrasts) |>
+        dplyr::mutate(
+          Item_Key = item,
+          Item_Label = label
+        ) |>
+        dplyr::select(Item_Key, Item_Label, everything())
+
+      group_contrasts_list[[item]] <- group_contrasts_df
 
       # Format Means for Summary
       # We want columns like: Class1_T1, Class1_T2, Class2_T1...
@@ -319,4 +362,20 @@ if (length(results_list) > 0) {
   print(final_summary |> dplyr::select(Item_Label, P_Interaction, Sig_Interaction))
 } else {
   warning("No results generated.")
+}
+
+if (length(contrasts_list) > 0) {
+  final_contrasts <- dplyr::bind_rows(contrasts_list)
+
+  contrasts_path <- file.path(output_dir, output_contrasts_file)
+  readr::write_csv(final_contrasts, contrasts_path)
+  message(sprintf("✅ Time differences saved to:\n   %s", normalizePath(contrasts_path)))
+}
+
+if (length(group_contrasts_list) > 0) {
+  final_group_contrasts <- dplyr::bind_rows(group_contrasts_list)
+
+  group_contrasts_path <- file.path(output_dir, output_group_contrasts_file)
+  readr::write_csv(final_group_contrasts, group_contrasts_path)
+  message(sprintf("✅ Group differences saved to:\n   %s", normalizePath(group_contrasts_path)))
 }
