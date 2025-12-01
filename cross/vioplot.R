@@ -34,6 +34,59 @@ CLASS_COLUMN <- "Class"
 
 # 4. 各検査票の設定（コードとラベル）
 SCALE_CONFIG <- list(
+    "NEO-FFI" = list(
+        name = "NEO-FFI",
+        items = list(
+            "542640_00" = "Neuroticism",
+            "542650_00" = "Extraversion",
+            "542660_00" = "Openness",
+            "542670_00" = "Agreeableness",
+            "542680_00" = "Conscientiousness"
+        )
+    ),
+    "TAC-24" = list(
+        name = "TAC-24",
+        items = list(
+            "542740_00" = "Catharsis",
+            "542750_00" = "Giving Up",
+            "542760_00" = "Info Seeking",
+            "542770_00" = "Distraction",
+            "542780_00" = "Avoidant Thinking",
+            "542790_00" = "Pos. Reappraisal",
+            "542800_00" = "Planning",
+            "542810_00" = "Resp. Transfer",
+            "542820_00" = "Support Seeking",
+            "542830_00" = "Avoidance",
+            "542840_00" = "Reappraisal & Distraction"
+        )
+    ),
+    "IES-R" = list(
+        name = "IES-R",
+        items = list(
+            "542850_00" = "Intrusion",
+            "542860_00" = "Avoidance",
+            "542870_00" = "Hyperarousal",
+            "542880_00" = "Total"
+        )
+    ),
+    "J-PSS" = list(
+        name = "J-PSS",
+        items = list(
+            "542890_00" = "Total"
+        )
+    ),
+    "POMS" = list(
+        name = "POMS",
+        items = list(
+            "542900_00" = "Tension-Anxiety",
+            "542910_00" = "Depression",
+            "542920_00" = "Anger-Hostility",
+            "542930_00" = "Vigor",
+            "542940_00" = "Fatigue",
+            "542950_00" = "Confusion",
+            "542960_00" = "TMD"
+        )
+    ),
     "DASS-15" = list(
         name = "DASS-15",
         items = list(
@@ -45,47 +98,43 @@ SCALE_CONFIG <- list(
     "GHQ-30" = list(
         name = "GHQ-30",
         items = list(
+            # "543000_00" = "General Illness",
             "543010_00" = "Somatic Symptoms",
             "543020_00" = "Sleep Disturbance",
             "543030_00" = "Social Dysfunction",
-            "543040_00" = "Anxiety/Depression",
+            "543040_00" = "Anxiety/Dysphoria",
             "543050_00" = "Severe Depression"
+            # "543060_00" = "Total"
         )
     ),
-    "TAC-24" = list(
-        name = "TAC-24",
+    "SES" = list(
+        name = "SES",
         items = list(
-            "542820_00" = "Prob. Solv. & Support",
-            "542830_00" = "Avoidance",
-            "542840_00" = "Pos. Reappraisal & Distraction"
+            "543070_00" = "Total"
         )
     ),
-    "IES-R" = list(
-        name = "IES-R",
+    "TAS-20" = list(
+        name = "TAS-20",
         items = list(
-            "542850_00" = "Intrusion",
-            "542860_00" = "Avoidance",
-            "542870_00" = "Hyperarousal"
-        )
-    ),
-    "POMS" = list(
-        name = "POMS",
-        items = list(
-            "542900_00" = "Tension-Anxiety",
-            "542910_00" = "Depression",
-            "542920_00" = "Anger-Hostility",
-            "542930_00" = "Vigor",
-            "542940_00" = "Fatigue",
-            "542950_00" = "Confusion"
+            "543080_00" = "DIF",
+            "543090_00" = "DDF",
+            "543100_00" = "EOT",
+            "543110_00" = "Total"
         )
     ),
     "STSS" = list(
         name = "STSS",
         items = list(
-            "543120_00" = "Diff. Ident. Bodily Sensations",
+            "543120_00" = "Bodily Sensations",
             "543130_00" = "Over-adaptation",
-            "543140_00" = "Lack of Health Mgmt",
-            "543150_00" = "Total Score"
+            "543140_00" = "Poor Health Mgmt",
+            "543150_00" = "Total"
+        )
+    ),
+    "Edinburgh" = list(
+        name = "Edinburgh",
+        items = list(
+            "543160_00" = "Total"
         )
     )
 )
