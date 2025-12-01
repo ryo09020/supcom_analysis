@@ -93,6 +93,7 @@ process_file <- function(input_path) {
 
 main <- function() {
     cat("=== Missing Value Imputation Started ===\n")
+    cat(sprintf("Target File: %s\n", INPUT_FILE))
 
     tryCatch(
         {
@@ -107,6 +108,5 @@ main <- function() {
     cat("=== Done ===\n")
 }
 
-if (sys.nframe() == 0) {
-    main()
-}
+# スクリプトが読み込まれたらメイン処理を実行
+main()

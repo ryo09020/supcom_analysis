@@ -138,7 +138,8 @@ load_and_prep_data <- function(file_path, class_col, items, covariates) {
 # 95%信頼区間の計算（共変量調整あり）
 calc_adjusted_means <- function(data, item_col, class_col, covariates) {
     # モデル式の作成: item ~ class + cov1 + cov2 ...
-    formula_str <- paste(item_col, "~", class_col, "+", paste(covariates, collapse = " + "))
+    # 変数名が数字で始まる場合などに備えてバッククォートで囲む
+    formula_str <- paste0("`", item_col, "` ~ ", class_col, " + ", paste(covariates, collapse = " + "))
     model <- lm(as.formula(formula_str), data = data)
 
     # 推定周辺平均の計算
@@ -301,6 +302,4 @@ main <- function() {
 }
 
 # スクリプト実行
-if (sys.nframe() == 0) {
-    main()
-}
+main()
