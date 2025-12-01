@@ -15,8 +15,9 @@ suppressPackageStartupMessages({
 # 【ユーザー設定エリア】
 # ==============================================================================
 
-# 1. デフォルトの入力ファイルパス（コマンドライン引数がない場合に使用）
-DEFAULT_INPUT_FILE <- "raw_data/dummy_data.csv"
+# 1. 入力ファイルパス
+#    ここに分析したいCSVファイルのパスを指定してください。
+INPUT_FILE <- "raw_data/dummy_data.csv"
 
 # 2. 欠損値を平均値で埋める対象のカラム名リスト
 #    ここに処理したいカラム名を列挙してください。
@@ -91,20 +92,19 @@ process_file <- function(input_path) {
 # ==============================================================================
 
 main <- function() {
-    # コマンドライン引数の取得
-    args <- commandArgs(trailingOnly = TRUE)
-
-    input_file <- if (length(args) >= 1) args[[1]] else DEFAULT_INPUT_FILE
+    cat("=== Missing Value Imputation Started ===\n")
 
     tryCatch(
         {
-            process_file(input_file)
+            process_file(INPUT_FILE)
         },
         error = function(e) {
             cat(sprintf("\n❌ エラーが発生しました: %s\n", e$message))
             quit(status = 1)
         }
     )
+
+    cat("=== Done ===\n")
 }
 
 if (sys.nframe() == 0) {
