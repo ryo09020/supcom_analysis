@@ -345,8 +345,30 @@ for (item in target_items) {
 # Output
 # ------------------------------------------------------------------
 
+# Helper function to format P-values
+format_pval_custom <- function(p) {
+  sapply(p, function(x) {
+    if (is.na(x)) {
+      return(NA_character_)
+    }
+    if (x < 0.001) {
+      return(format(x, scientific = TRUE, digits = 3))
+    } else {
+      return(sprintf("%.4f", x))
+    }
+  })
+}
+
 if (length(results_list) > 0) {
   final_summary <- dplyr::bind_rows(results_list)
+
+  # Apply formatting to P-value columns
+  final_summary <- final_summary |>
+    dplyr::mutate(
+      P_Time = format_pval_custom(P_Time),
+      P_Class = format_pval_custom(P_Class),
+      P_Interaction = format_pval_custom(P_Interaction)
+    )
 
   # Reorder columns for readability
   # Key, Label, P-values, then Means
@@ -367,6 +389,11 @@ if (length(results_list) > 0) {
 if (length(contrasts_list) > 0) {
   final_contrasts <- dplyr::bind_rows(contrasts_list)
 
+  # Format p.value column
+  if ("p.value" %in% names(final_contrasts)) {
+    final_contrasts$p.value <- format_pval_custom(final_contrasts$p.value)
+  }
+
   contrasts_path <- file.path(output_dir, output_contrasts_file)
   readr::write_csv(final_contrasts, contrasts_path)
   message(sprintf("✅ Time differences saved to:\n   %s", normalizePath(contrasts_path)))
@@ -374,6 +401,11 @@ if (length(contrasts_list) > 0) {
 
 if (length(group_contrasts_list) > 0) {
   final_group_contrasts <- dplyr::bind_rows(group_contrasts_list)
+
+  # Format p.value column
+  if ("p.value" %in% names(final_group_contrasts)) {
+    final_group_contrasts$p.value <- format_pval_custom(final_group_contrasts$p.value)
+  }
 
   group_contrasts_path <- file.path(output_dir, output_group_contrasts_file)
   readr::write_csv(final_group_contrasts, group_contrasts_path)
