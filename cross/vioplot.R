@@ -13,12 +13,11 @@ suppressPackageStartupMessages({
     library(dplyr)
     library(ggplot2)
     library(tidyr)
-    library(patchwork) # 複数プロットの結合用
     library(emmeans) # 推定周辺平均（共変量調整）用
 })
 
 # グローバル変数の警告抑制
-utils::globalVariables(c("value", "class_factor", "emmean", "lower.CL", "upper.CL"))
+utils::globalVariables(c("value", "class_factor", "emmean", "lower.CL", "upper.CL", "item", "item_label"))
 
 # ==============================================================================
 # 【ユーザー設定エリア】
@@ -111,42 +110,10 @@ get_scale_config <- function(scale_name) {
     return(SCALE_CONFIG[[scale_name]])
 }
 
-# ダミーデータの生成（テスト用）
-generate_dummy_data <- function(file_path, class_col, items, covariates, n_rows = 100) {
-    cat("⚠️ 入力ファイルが見つからないため、ダミーデータを生成します...\n")
-
-    set.seed(123)
-    classes <- sample(1:3, n_rows, replace = TRUE)
-
-    df <- data.frame(row_id = 1:n_rows)
-    df[[class_col]] <- classes
-
-    # 共変量の生成
-    df$age <- sample(20:60, n_rows, replace = TRUE)
-    df$sex <- sample(0:1, n_rows, replace = TRUE)
-    df$finaledu_int <- sample(c(12, 16), n_rows, replace = TRUE)
-
-    # 項目の生成
-    for (code in names(items)) {
-        # クラスごとに少し分布を変える
-        base_mean <- ifelse(classes == 1, 10, ifelse(classes == 2, 15, 20))
-        df[[code]] <- rnorm(n_rows, mean = base_mean, sd = 5)
-        # 負の値を0にするなどの調整
-        df[[code]] <- pmax(0, round(df[[code]]))
-    }
-
-    # ディレクトリ作成
-    dir.create(dirname(file_path), recursive = TRUE, showWarnings = FALSE)
-    write_csv(df, file_path)
-    cat(sprintf("✅ ダミーデータを保存しました: %s\n", file_path))
-    return(df)
-}
-
 # データの読み込みと前処理
 load_and_prep_data <- function(file_path, class_col, items, covariates) {
     if (!file.exists(file_path)) {
-        # ファイルがない場合はダミーデータを生成して使用
-        return(generate_dummy_data(file_path, class_col, items, covariates))
+        stop(sprintf("❌ 入力ファイルが見つかりません: %s", file_path))
     }
 
     cat(sprintf("📁 データを読み込んでいます: %s\n", file_path))
@@ -157,13 +124,7 @@ load_and_prep_data <- function(file_path, class_col, items, covariates) {
     missing_cols <- setdiff(required_cols, names(data))
 
     if (length(missing_cols) > 0) {
-        # ダミーデータ生成を試みる（既存ファイルに列が足りない場合など）
-        # ここでは警告を出して、もし項目が足りなければダミーデータを作るか、
-        # あるいは単に警告だけで進むか。今回は警告のみとする。
         warning(sprintf("⚠️ 以下の列がデータに見つかりません: %s", paste(missing_cols, collapse = ", ")))
-
-        # もし分析対象の項目が一つもない場合は、テスト用にダミー列を追加するなどの処置も考えられるが、
-        # ユーザーがコードを書き換える前提なので、ここではそのままにする。
     }
 
     # クラス列をファクター化
@@ -196,54 +157,6 @@ calc_adjusted_means <- function(data, item_col, class_col, covariates) {
     return(emm_df)
 }
 
-# 個別のバイオリンプロット作成
-create_violin_plot <- function(data, item_col, item_label, class_col, covariates) {
-    # 数値型に変換（念のため）
-    plot_data <- data %>%
-        mutate(
-            value = suppressWarnings(as.numeric(.data[[item_col]])),
-            class_factor = as.factor(.data[[class_col]]) # 明示的にファクター化
-        ) %>%
-        filter(!is.na(value), !is.na(class_factor))
-
-    # 共変量の欠損も除外
-    for (cov in covariates) {
-        plot_data <- plot_data %>% filter(!is.na(.data[[cov]]))
-    }
-
-    # 調整済み平均値の計算
-    adj_means <- calc_adjusted_means(plot_data, "value", "class_factor", covariates)
-
-    p <- ggplot(plot_data, aes(x = class_factor, y = value, fill = class_factor)) +
-        # バイオリンプロット（生の分布）
-        geom_violin(trim = FALSE, alpha = 0.5, color = NA) +
-
-        # 調整済み平均値と95%信頼区間（エラーバー）
-        # data引数で調整済みデータフレームを指定
-        geom_pointrange(
-            data = adj_means,
-            aes(y = y, ymin = ymin, ymax = ymax),
-            color = "black", size = 0.8, shape = 18
-        ) +
-
-        # デザイン調整
-        scale_fill_brewer(palette = "Set2") +
-        labs(
-            title = NULL,
-            x = "Class",
-            y = item_label
-        ) +
-        theme_minimal() +
-        theme(
-            legend.position = "none",
-            plot.title = element_text(face = "bold", hjust = 0.5),
-            axis.title = element_text(size = 16),
-            axis.text = element_text(size = 14)
-        )
-
-    return(p)
-}
-
 # ==============================================================================
 # メイン処理
 # ==============================================================================
@@ -274,36 +187,115 @@ main <- function() {
     # 1. データ読み込み
     df <- load_and_prep_data(INPUT_FILE, CLASS_COLUMN, target_items, COVARIATES)
 
-    # 2. 各項目のプロット作成
-    plot_list <- list()
+    # 2. データ整形と調整済み平均の計算
+    cat("📊 データを整形し、調整済み平均を計算しています...\n")
 
-    for (code in names(target_items)) {
-        label <- target_items[[code]]
-        cat(sprintf("📊 プロット作成中: %s (%s)\n", label, code))
+    # ロング形式に変換（プロット用）
+    # 必要な列だけ抽出
+    cols_to_keep <- c(CLASS_COLUMN, COVARIATES, names(target_items))
+    # 存在する列のみ
+    cols_to_keep <- intersect(cols_to_keep, names(df))
 
-        if (code %in% names(df)) {
-            p <- create_violin_plot(df, code, label, CLASS_COLUMN, COVARIATES)
-            plot_list[[length(plot_list) + 1]] <- p
-        } else {
-            cat(sprintf("   ⚠️ 列 '%s' が存在しないためスキップします。\n", code))
+    df_subset <- df %>% select(all_of(cols_to_keep))
+
+    # ターゲット項目をロング形式に
+    # key: item code, value: score
+    # pivot_longerを使うために、項目コードのみをcolsに指定
+    available_items <- intersect(names(target_items), names(df_subset))
+
+    if (length(available_items) == 0) {
+        stop("❌ プロット可能な項目がデータに存在しません。")
+    }
+
+    # ロング形式データ作成
+    long_df <- df_subset %>%
+        pivot_longer(
+            cols = all_of(available_items),
+            names_to = "item",
+            values_to = "value"
+        ) %>%
+        mutate(
+            class_factor = as.factor(.data[[CLASS_COLUMN]]),
+            # 項目コードをラベルに変換
+            item_label = factor(item, levels = names(target_items), labels = unlist(target_items))
+        ) %>%
+        filter(!is.na(value), !is.na(class_factor))
+
+    # 共変量の欠損除外
+    for (cov in COVARIATES) {
+        if (cov %in% names(long_df)) {
+            long_df <- long_df %>% filter(!is.na(.data[[cov]]))
         }
     }
 
-    if (length(plot_list) == 0) {
-        stop("❌ プロット可能な項目がありませんでした。")
+    # 調整済み平均値を各項目ごとに計算して結合
+    adj_means_list <- list()
+
+    for (code in available_items) {
+        # その項目のデータだけ抽出
+        item_data <- df_subset %>%
+            filter(!is.na(.data[[code]]))
+
+        # 共変量欠損除外
+        for (cov in COVARIATES) {
+            if (cov %in% names(item_data)) {
+                item_data <- item_data %>% filter(!is.na(.data[[cov]]))
+            }
+        }
+
+        if (nrow(item_data) > 0) {
+            # 計算
+            means <- calc_adjusted_means(item_data, code, CLASS_COLUMN, COVARIATES)
+            means$item <- code
+            means$item_label <- target_items[[code]]
+            adj_means_list[[length(adj_means_list) + 1]] <- means
+        }
     }
 
-    # 3. プロットの結合（patchworkを使用）
-    combined_plot <- wrap_plots(plot_list) +
-        plot_annotation(
+    if (length(adj_means_list) == 0) {
+        stop("❌ 調整済み平均の計算に失敗しました（データ不足の可能性があります）。")
+    }
+
+    adj_means_df <- bind_rows(adj_means_list) %>%
+        mutate(
+            item_label = factor(item, levels = names(target_items), labels = unlist(target_items))
+        )
+
+    # 3. プロット作成（facet_wrap使用）
+    cat("📈 プロットを作成しています...\n")
+
+    p <- ggplot(long_df, aes(x = class_factor, y = value, fill = class_factor)) +
+        # バイオリンプロット
+        geom_violin(trim = FALSE, alpha = 0.5, color = NA) +
+
+        # 調整済み平均値と95%信頼区間
+        geom_pointrange(
+            data = adj_means_df,
+            aes(y = y, ymin = ymin, ymax = ymax),
+            color = "black", size = 0.8, shape = 18
+        ) +
+
+        # ファセット（項目ごとに分割）
+        facet_wrap(~item_label, scales = "free_y") +
+
+        # デザイン調整
+        scale_fill_brewer(palette = "Set2") +
+        labs(
             title = paste(scale_name, "Scores by Class"),
-            theme = theme(
-                plot.title = element_text(size = 16, face = "bold", hjust = 0.5)
-            )
+            x = "Class",
+            y = "Score"
+        ) +
+        theme_minimal() +
+        theme(
+            legend.position = "none",
+            plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+            axis.title = element_text(size = 14),
+            axis.text = element_text(size = 12),
+            strip.text = element_text(size = 12, face = "bold")
         )
 
     # 4. 保存
-    ggsave(full_output_path, combined_plot, width = 12, height = 6, dpi = 300)
+    ggsave(full_output_path, p, width = 12, height = 8, dpi = 300)
     cat(sprintf("\n✅ プロットを保存しました: %s\n", normalizePath(full_output_path)))
     cat("=== Done ===\n")
 }
