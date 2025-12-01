@@ -189,6 +189,11 @@ process_scale <- function(scale_name) {
 
     df_subset <- df %>% select(all_of(cols_to_keep))
 
+    # ターゲット項目を数値型に変換（文字列などが混入している場合の対策）
+    # 警告（NAs introduced by coercion）は抑制し、非数値はNAにする
+    df_subset <- df_subset %>%
+        mutate(across(all_of(available_items), ~ suppressWarnings(as.numeric(.))))
+
     # ターゲット項目をロング形式に
     # key: item code, value: score
     # pivot_longerを使うために、項目コードのみをcolsに指定
