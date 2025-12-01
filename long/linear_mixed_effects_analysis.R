@@ -51,8 +51,8 @@ file_time1 <- "time1.csv"
 file_time2 <- "time2_with_class.csv"
 
 id_column <- "ID"
-class_column <- "class"
-age_column <- "age" # Added for filtering
+class_column <- "Class"
+age_column <- "age"
 
 # Items to analyse
 target_items <- c(
@@ -61,7 +61,7 @@ target_items <- c(
   # GHQ-30
   "543010_00", "543020_00", "543030_00", "543040_00", "543050_00",
   # MMSE
-  "mmse_total"
+  "516484_00"
 )
 
 # Item Labels
@@ -69,17 +69,18 @@ item_labels_map <- c(
   "542850_00" = "IES-R: Intrusion",
   "542860_00" = "IES-R: Avoidance",
   "542870_00" = "IES-R: Hyperarousal",
+  "542880_00" = "IES-R: Total",
   "543010_00" = "GHQ: Somatic Symptoms",
   "543020_00" = "GHQ: Sleep Disturbance",
   "543030_00" = "GHQ: Social Dysfunction",
   "543040_00" = "GHQ: Anxiety/Depression",
   "543050_00" = "GHQ: Severe Depression",
-  "mmse_total" = "MMSE Total"
+  "516484_00" = "MMSE Total"
 )
 
 # Item-specific Age Filters (e.g., MMSE only for 65+)
 item_age_filters <- list(
-  "mmse_total" = 65
+  "516484_00" = 65
 )
 
 # Column mapping for each time point (Item Key = Column Name in CSV)
@@ -90,6 +91,7 @@ time1_item_map <- c(
   "542850_00" = "542850_00",
   "542860_00" = "542860_00",
   "542870_00" = "542870_00",
+  "542880_00" = "542880_00",
   # GHQ-30
   "543010_00" = "543010_00",
   "543020_00" = "543020_00",
@@ -97,22 +99,23 @@ time1_item_map <- c(
   "543040_00" = "543040_00",
   "543050_00" = "543050_00",
   # MMSE
-  "mmse_total" = "mmse_total"
+  "516484_00" = "516484_00"
 )
 
 time2_item_map <- c(
   # IES-R
-  "542850_00" = "542850_00",
-  "542860_00" = "542860_00",
-  "542870_00" = "542870_00",
+  "542850_00" = "541152_00", # Intrusion
+  "542860_00" = "541153_00", # Avoidance
+  "542870_00" = "541154_00", # Hyperarousal
+  "542880_00" = "541155_00", # Total
   # GHQ-30
-  "543010_00" = "543010_00",
-  "543020_00" = "543020_00",
-  "543030_00" = "543030_00",
-  "543040_00" = "543040_00",
-  "543050_00" = "543050_00",
+  "543010_00" = "542003_00", # Somatic Symptoms
+  "543020_00" = "542004_00", # Sleep Disturbance
+  "543030_00" = "542005_00", # Social Dysfunction
+  "543040_00" = "542006_00", # Anxiety/Dysphoria
+  "543050_00" = "542007_00", # Severe Depression
   # MMSE
-  "mmse_total" = "mmse_total"
+  "516484_00" = "516484_00"
 )
 
 # Output locations
@@ -137,8 +140,14 @@ prepare_timepoint_data <- function(file_path, time_label, item_map, target_items
   message(sprintf("Reading %s (%s)...", time_label, file_path))
   df_raw <- readr::read_csv(file_path, show_col_types = FALSE)
 
+  # Standardize Class column name (Handle "Class" vs "class")
+  if (!class_column %in% names(df_raw) && "Class" %in% names(df_raw)) {
+    df_raw <- df_raw |> dplyr::rename(!!class_column := Class)
+    message(sprintf("   -> Renamed 'Class' to '%s'", class_column))
+  }
+
   # Check columns
-  required_cols <- unique(c(id_column, class_column, age_column, names(item_map)))
+  required_cols <- unique(c(id_column, class_column, age_column, unlist(item_map)))
   missing_cols <- setdiff(required_cols, names(df_raw))
   if (length(missing_cols) > 0) {
     # Try to proceed if only some items are missing, but warn
