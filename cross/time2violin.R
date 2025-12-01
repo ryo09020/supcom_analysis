@@ -113,7 +113,8 @@ load_and_prep_data <- function(file_path, class_col, items, covariates) {
     }
 
     cat(sprintf("📁 データを読み込んでいます: %s\n", file_path))
-    data <- read_csv(file_path, na = c("", "NA", "."), show_col_types = FALSE)
+    # NAとして扱う文字列を追加
+    data <- read_csv(file_path, na = c("", "NA", ".", "NaN", "Inf", "-Inf"), show_col_types = FALSE)
 
     # 必須列の確認
     required_cols <- c(class_col, names(items), covariates)
@@ -190,14 +191,12 @@ process_scale <- function(scale_name) {
     df_subset <- df %>% select(all_of(cols_to_keep))
 
     # ターゲット項目を数値型に変換（文字列などが混入している場合の対策）
-    # 警告（NAs introduced by coercion）は抑制し、非数値はNAにする
-    df_subset <- df_subset %>%
-        mutate(across(all_of(available_items), ~ suppressWarnings(as.numeric(.))))
-
-    # ターゲット項目をロング形式に
-    # key: item code, value: score
-    # pivot_longerを使うために、項目コードのみをcolsに指定
     available_items <- intersect(names(target_items), names(df_subset))
+
+    for (item in available_items) {
+        # 強制的に数値変換し、警告を抑制
+        df_subset[[item]] <- suppressWarnings(as.numeric(df_subset[[item]]))
+    }
 
     if (length(available_items) == 0) {
         warning(sprintf("⚠️ Scale '%s' のプロット可能な項目がデータに存在しません。スキップします。\n", scale_name))
