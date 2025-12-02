@@ -130,6 +130,7 @@ if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE, showWarnin
 output_summary_file <- "lmm_summary_readable.csv"
 output_contrasts_file <- "lmm_time_differences_by_class.csv"
 output_group_contrasts_file <- "lmm_group_differences.csv" # Added for Class A vs Class B
+output_coefficients_file <- "lmm_model_coefficients.csv" # Added for Beta coefficients
 output_details_file <- "lmm_details_full.csv"
 model_log_file <- "lmm_model_warnings.log"
 alpha_level <- 0.05
@@ -138,6 +139,7 @@ alpha_level <- 0.05
 results_list <- list()
 contrasts_list <- list()
 group_contrasts_list <- list() # Added container for group contrasts
+coefficients_list <- list() # Added container for model coefficients
 
 # ------------------------------------------------------------------
 # Data Preparation
@@ -288,7 +290,47 @@ for (item in target_items) {
       # Contrast: Time 2 - Time 1 (or vice versa depending on factor level order)
       # We want to see if the change is significant for each class.
       time_contrasts <- pairs(emm, simple = "time")
-      contrasts_df <- as.data.frame(time_contrasts) |>
+
+      # Calculate Effect Size (Cohen's d) for Time Differences
+      # We use the model's residual SD (sigma) as the standardizer
+
+      # Robust DF extraction
+      d_eff <- tryCatch(
+        {
+          val <- df.residual(model)
+          if (is.null(val)) Inf else val
+        },
+        error = function(e) Inf
+      )
+
+      s_eff <- sigma(model)
+
+      time_eff_size <- emmeans::eff_size(emm, sigma = s_eff, edf = d_eff)
+      # Filter for simple effects of time if needed, but eff_size on the emm object usually does pairwise
+      # Actually eff_size needs the contrasts structure or we call it on the emm object with method
+      # Let's do it explicitly on the emm grid for time differences
+
+      # emmeans::eff_size computes effect sizes for *pairwise differences* of estimates
+      # It returns a summary with "effect.size" column
+      time_es <- emmeans::eff_size(emm, sigma = s_eff, edf = d_eff, method = "pairwise", simple = "time")
+
+      # Convert to data frames
+      contrasts_df <- as.data.frame(time_contrasts)
+      es_df <- as.data.frame(time_es)
+
+      # Join contrasts with effect sizes
+      # They should match by contrast and class_column
+      # Note: eff_size output might have slightly different column names for contrasts
+
+      # Let's combine carefully.
+      # time_contrasts has columns: contrast, [class_column], estimate, SE, df, t.ratio, p.value
+      # time_es has columns: contrast, [class_column], effect.size, SE, df, lower.CL, upper.CL
+
+      contrasts_df <- contrasts_df |>
+        dplyr::left_join(
+          es_df |> dplyr::select(contrast, dplyr::all_of(class_column), effect.size, lower.CL, upper.CL),
+          by = c("contrast", class_column)
+        ) |>
         dplyr::mutate(
           Item_Key = item,
           Item_Label = label
@@ -301,7 +343,18 @@ for (item in target_items) {
       # This corresponds to "Profile 1 vs Profile 3"
       # We average over time (main effect of class)
       group_contrasts <- pairs(emm, simple = class_column)
-      group_contrasts_df <- as.data.frame(group_contrasts) |>
+
+      # Effect size for group differences
+      group_es <- emmeans::eff_size(emm, sigma = s_eff, edf = d_eff, method = "pairwise", simple = class_column)
+
+      group_contrasts_df <- as.data.frame(group_contrasts)
+      group_es_df <- as.data.frame(group_es)
+
+      group_contrasts_df <- group_contrasts_df |>
+        dplyr::left_join(
+          group_es_df |> dplyr::select(contrast, time, effect.size, lower.CL, upper.CL),
+          by = c("contrast", "time")
+        ) |>
         dplyr::mutate(
           Item_Key = item,
           Item_Label = label
@@ -334,6 +387,28 @@ for (item in target_items) {
 
       res_row <- cbind(res_row, means_wide)
       results_list[[item]] <- res_row
+
+      # Extract Model Coefficients (Beta)
+      # summary(model)$tTable contains: Value, Std.Error, DF, t-value, p-value
+      coefs <- summary(model)$tTable
+      coefs_df <- as.data.frame(coefs)
+      coefs_df$Term <- rownames(coefs)
+      coefs_df <- coefs_df |>
+        dplyr::mutate(
+          Item_Key = item,
+          Item_Label = label
+        ) |>
+        dplyr::select(Item_Key, Item_Label, Term, Value, Std.Error, DF, `t-value`, `p-value`) |>
+        dplyr::rename(
+          Beta = Value,
+          SE = Std.Error,
+          t.value = `t-value`,
+          p.value = `p-value`
+        )
+
+      # Add to coefficients list (need to initialize this list outside loop)
+      if (!exists("coefficients_list")) coefficients_list <<- list() # Ensure it exists in parent if not
+      coefficients_list[[item]] <- coefs_df
     },
     error = function(e) {
       append_log(sprintf("Error analyzing %s: %s", label, e$message))
@@ -346,10 +421,15 @@ for (item in target_items) {
 # ------------------------------------------------------------------
 
 # Helper function to format P-values
+# Helper function to format P-values
 format_pval_custom <- function(p) {
   sapply(p, function(x) {
     if (is.na(x)) {
       return(NA_character_)
+    }
+    # Handle extremely small values (effectively zero)
+    if (x < 2.2e-16) {
+      return("< 2.2e-16")
     }
     if (x < 0.001) {
       return(format(x, scientific = TRUE, digits = 3))
@@ -410,4 +490,17 @@ if (length(group_contrasts_list) > 0) {
   group_contrasts_path <- file.path(output_dir, output_group_contrasts_file)
   readr::write_csv(final_group_contrasts, group_contrasts_path)
   message(sprintf("✅ Group differences saved to:\n   %s", normalizePath(group_contrasts_path)))
+}
+
+if (length(coefficients_list) > 0) {
+  final_coefficients <- dplyr::bind_rows(coefficients_list)
+
+  # Format p.value column
+  if ("p.value" %in% names(final_coefficients)) {
+    final_coefficients$p.value <- format_pval_custom(final_coefficients$p.value)
+  }
+
+  coefficients_path <- file.path(output_dir, output_coefficients_file)
+  readr::write_csv(final_coefficients, coefficients_path)
+  message(sprintf("✅ Model coefficients (Beta) saved to:\n   %s", normalizePath(coefficients_path)))
 }
