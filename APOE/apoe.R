@@ -72,7 +72,7 @@ if (vcf_list_status != 0) {
 }
 
 vcf_sample_ids <- readLines(vcf_list_file)
-vcf_sample_ids <- trimws(vcf_sample_ids) 
+vcf_sample_ids <- trimws(vcf_sample_ids)
 
 # CSVとVCFの両方に存在するID（共通ID）を抽出
 common_sample_ids <- intersect(csv_sample_ids, vcf_sample_ids)
@@ -133,10 +133,12 @@ if (!file.exists(query_file) || file.info(query_file)$size == 0) {
 # --- 読み込み -------------------------------------------------------------
 
 # (期待する列数は 3 + 共通IDの数)
-expected_cols <- 3 + length(common_sample_ids) 
+expected_cols <- 3 + length(common_sample_ids)
 
-geno_raw <- read.table(query_file, header = FALSE, sep = "\t", stringsAsFactors = FALSE, check.names = FALSE,
-                       colClasses = "character")
+geno_raw <- read.table(query_file,
+    header = FALSE, sep = "\t", stringsAsFactors = FALSE, check.names = FALSE,
+    colClasses = "character"
+)
 
 # 2. 列数チェック (★ ここが 9907 == 9907 となるはず)
 if (ncol(geno_raw) != expected_cols) {
@@ -150,17 +152,27 @@ geno_filtered <- geno_raw
 
 # --- APOE e4 計算 (変更なし) ------------------------------------------
 get_base <- function(code, ref, alt_string) {
-    if (is.na(code) || code == ".") return(NA_character_)
+    if (is.na(code) || code == ".") {
+        return(NA_character_)
+    }
     idx <- suppressWarnings(as.integer(code))
-    if (is.na(idx)) return(NA_character_)
-    if (idx == 0) return(ref)
+    if (is.na(idx)) {
+        return(NA_character_)
+    }
+    if (idx == 0) {
+        return(ref)
+    }
     alt_vec <- strsplit(alt_string, ",", fixed = TRUE)[[1]]
-    if (idx > length(alt_vec)) return(NA_character_)
+    if (idx > length(alt_vec)) {
+        return(NA_character_)
+    }
     alt_vec[idx]
 }
 
 decode_gt <- function(gt, ref, alt) {
-    if (is.na(gt) || gt %in% c(".", "./.", ".|.")) return(rep(NA_character_, 2))
+    if (is.na(gt) || gt %in% c(".", "./.", ".|.")) {
+        return(rep(NA_character_, 2))
+    }
     sep <- if (grepl("|", gt, fixed = TRUE)) "\\|" else "/"
     parts <- strsplit(gt, sep)[[1]]
     if (length(parts) == 1) parts <- rep(parts, 2)
@@ -169,12 +181,14 @@ decode_gt <- function(gt, ref, alt) {
 
 calc_e4_dosage <- function(gt1, gt2, ref1, alt1, ref2, alt2) {
     alleles1 <- decode_gt(gt1, ref1, alt1)
-    alleles2 <- decode_gt(gt2, ref2, alt2) 
-    if (all(is.na(alleles1)) || all(is.na(alleles2))) return(NA_real_)
+    alleles2 <- decode_gt(gt2, ref2, alt2)
+    if (all(is.na(alleles1)) || all(is.na(alleles2))) {
+        return(NA_real_)
+    }
     min(sum(alleles1 == "C", na.rm = TRUE), sum(alleles2 == "C", na.rm = TRUE))
 }
 
-snp_rows <- split(geno_filtered, geno_filtered$SNP_ID) 
+snp_rows <- split(geno_filtered, geno_filtered$SNP_ID)
 if (!all(config$snp_ids %in% names(snp_rows))) {
     stop("Requested SNP IDs not found in VCF query output (within the specified region).")
 }
@@ -214,6 +228,7 @@ summary_df <- do.call(rbind, lapply(split(merged, merged[[config$class_column]])
         n_e4_carriers = sum(df$e4_carrier, na.rm = TRUE),
         n_e4_homozygotes = sum(df$e4_homozygote, na.rm = TRUE),
         carrier_ratio = if (n_genotyped > 0) sum(df$e4_carrier, na.rm = TRUE) / n_genotyped else NA_real_,
+        homozygote_ratio = if (n_genotyped > 0) sum(df$e4_homozygote, na.rm = TRUE) / n_genotyped else NA_real_,
         mean_e4_dosage = if (n_genotyped > 0) mean(df$e4_dosage, na.rm = TRUE) else NA_real_,
         stringsAsFactors = FALSE
     )
