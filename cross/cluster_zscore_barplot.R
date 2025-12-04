@@ -31,7 +31,7 @@ file_path <- "final_ver/raw_data/dummy_data_with_clusters_sorted.csv"
 cluster_column <- "Class"
 
 # 分析したい項目名（複数選択可能）
-target_items <- c("X542690_00", "X542700_00", "X542710_00","X542720_00","X542730_00")
+target_items <- c("X542690_00", "X542700_00", "X542710_00", "X542720_00", "X542730_00")
 
 # 図に表示する際の項目ラベル（target_itemsと同じ順序で指定。空の場合は列名を使用）
 target_item_labels <- c(
@@ -96,7 +96,9 @@ item_category_df <- tibble(
   )
 )
 
-unknown_category_items <- item_category_df %>% filter(Category == "Unspecified") %>% pull(Item)
+unknown_category_items <- item_category_df %>%
+  filter(Category == "Unspecified") %>%
+  pull(Item)
 if (length(unknown_category_items) > 0) {
   warning(
     "ターゲット項目のうちカテゴリが未指定の項目があります: ",
@@ -157,8 +159,12 @@ label_replacements <- as.list(item_label_lookup)
 
 # 色ベクトルの作成
 make_palette <- function(colors, n) {
-  if (n <= 0) return(character(0))
-  if (length(colors) == 1) return(rep(colors, n))
+  if (n <= 0) {
+    return(character(0))
+  }
+  if (length(colors) == 1) {
+    return(rep(colors, n))
+  }
   grDevices::colorRampPalette(colors)(n)
 }
 
@@ -186,6 +192,8 @@ analysis_data <- data %>%
   mutate(across(all_of(c(target_items, covariates)), as.numeric)) %>%
   # クラスター列を因子型に変換
   mutate(!!sym(cluster_column) := as.factor(!!sym(cluster_column))) %>%
+  # クラスターラベルを "Profile X" に変更
+  mutate(!!sym(cluster_column) := factor(!!sym(cluster_column), labels = paste0("Profile ", levels(!!sym(cluster_column))))) %>%
   # 欠損値を除外
   na.omit()
 
@@ -212,7 +220,7 @@ adjusted_data <- analysis_data
 # 各ターゲット項目について共変量調整を実行
 for (item in target_items) {
   cat(paste("項目", item, "を調整中...\n"))
-  
+
   # 共変量を含む回帰式を作成
   # 共変量が指定されていない場合は調整をスキップ
   if (length(covariates) == 0) {
@@ -251,13 +259,13 @@ zscore_data <- adjusted_data
 # 各ターゲット項目についてz-score化を実行
 for (item in target_items) {
   cat(paste("項目", item, "をz-score化中...\n"))
-  
+
   # z-score化: (値 - 平均) / 標準偏差
   item_mean <- mean(adjusted_data[[item]], na.rm = TRUE)
   item_sd <- sd(adjusted_data[[item]], na.rm = TRUE)
-  
+
   zscore_data[[item]] <- (adjusted_data[[item]] - item_mean) / item_sd
-  
+
   cat(paste("  平均:", round(item_mean, 3), "標準偏差:", round(item_sd, 3), "\n"))
 }
 
@@ -296,10 +304,10 @@ summary_stats <- plot_data %>%
     N = n(),
     Mean_ZScore = mean(ZScore, na.rm = TRUE),
     SD_ZScore = sd(ZScore, na.rm = TRUE),
-    SE_ZScore = SD_ZScore / sqrt(N),  # 標準誤差
+    SE_ZScore = SD_ZScore / sqrt(N), # 標準誤差
     Category = first(Category),
     Item_Label = first(Item_Label),
-    .groups = 'drop'
+    .groups = "drop"
   ) %>%
   mutate(
     Item = factor(as.character(Item), levels = target_items),
@@ -350,7 +358,7 @@ boxplot_plot <- ggplot(raw_plot_data, aes(x = Cluster, y = Value, fill = Cluster
     fill = "white",
     color = "black"
   ) +
-  facet_wrap(~ Item_Label, scales = "free_y") +
+  facet_wrap(~Item_Label, scales = "free_y") +
   scale_fill_viridis_d(name = "Cluster") +
   labs(
     title = paste(plot_title, "(raw-score boxplot)"),
@@ -360,14 +368,14 @@ boxplot_plot <- ggplot(raw_plot_data, aes(x = Cluster, y = Value, fill = Cluster
   ) +
   theme_minimal() +
   theme(
-    plot.title = element_text(size = 16, hjust = 0.5),
-    plot.subtitle = element_text(size = 12, hjust = 0.5),
-    axis.title = element_text(size = 14),
-    axis.text = element_text(size = 12),
-    strip.text = element_text(size = 13),
+    plot.title = element_text(size = 24, hjust = 0.5, face = "bold"),
+    plot.subtitle = element_text(size = 18, hjust = 0.5),
+    axis.title = element_text(size = 20),
+    axis.text = element_text(size = 16),
+    strip.text = element_text(size = 18, face = "bold"),
     legend.position = "bottom",
-    legend.title = element_text(size = 13),
-    legend.text = element_text(size = 11)
+    legend.title = element_text(size = 18),
+    legend.text = element_text(size = 16)
   )
 
 
@@ -388,7 +396,7 @@ violin_plot <- ggplot(raw_plot_data, aes(x = Cluster, y = Value, fill = Cluster)
     fill = "red",
     color = "black"
   ) +
-  facet_wrap(~ Item_Label, scales = "free_y") +
+  facet_wrap(~Item_Label, scales = "free_y") +
   scale_fill_viridis_d(name = "Cluster") +
   labs(
     title = paste(plot_title, "(raw-score violin)"),
@@ -398,14 +406,14 @@ violin_plot <- ggplot(raw_plot_data, aes(x = Cluster, y = Value, fill = Cluster)
   ) +
   theme_minimal() +
   theme(
-    plot.title = element_text(size = 16, hjust = 0.5),
-    plot.subtitle = element_text(size = 12, hjust = 0.5),
-    axis.title = element_text(size = 14),
-    axis.text = element_text(size = 12),
-    strip.text = element_text(size = 13),
+    plot.title = element_text(size = 24, hjust = 0.5, face = "bold"),
+    plot.subtitle = element_text(size = 18, hjust = 0.5),
+    axis.title = element_text(size = 20),
+    axis.text = element_text(size = 16),
+    strip.text = element_text(size = 18, face = "bold"),
     legend.position = "bottom",
-    legend.title = element_text(size = 13),
-    legend.text = element_text(size = 11)
+    legend.title = element_text(size = 18),
+    legend.text = element_text(size = 16)
   )
 
 
@@ -419,9 +427,10 @@ cat("Z-score棒グラフを作成中...\n")
 p1 <- ggplot(summary_stats, aes(x = Item, y = Mean_ZScore, fill = Item)) +
   geom_bar(stat = "identity", alpha = 0.8) +
   geom_errorbar(aes(ymin = Mean_ZScore - SE_ZScore, ymax = Mean_ZScore + SE_ZScore),
-                width = 0.25) +
+    width = 0.25
+  ) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "black", alpha = 0.5) +
-  facet_wrap(~ Cluster, nrow = 1) +
+  facet_wrap(~Cluster, nrow = 1) +
   scale_fill_manual(
     name = "Item",
     values = fill_values,
@@ -437,15 +446,15 @@ p1 <- ggplot(summary_stats, aes(x = Item, y = Mean_ZScore, fill = Item)) +
   ) +
   theme_minimal() +
   theme(
-    plot.title = element_text(size = 16, hjust = 0.5),
-    plot.subtitle = element_text(size = 12, hjust = 0.5),
-    axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
-    axis.text.y = element_text(size = 12),
-    axis.title = element_text(size = 14),
-    strip.text = element_text(size = 13),
+    plot.title = element_text(size = 24, hjust = 0.5, face = "bold"),
+    plot.subtitle = element_text(size = 18, hjust = 0.5),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 16),
+    axis.text.y = element_text(size = 16),
+    axis.title = element_text(size = 20),
+    strip.text = element_text(size = 18, face = "bold"),
     legend.position = "bottom",
-    legend.title = element_text(size = 13),
-    legend.text = element_text(size = 11)
+    legend.title = element_text(size = 18),
+    legend.text = element_text(size = 16)
   )
 
 
@@ -460,20 +469,20 @@ anova_results <- list()
 
 for (item in target_items) {
   cat(paste("\n--- Item:", item, "---\n"))
-  
+
   # 項目別データを抽出
   item_data <- plot_data %>% filter(Item == item)
-  
+
   # 分散分析
   anova_model <- aov(ZScore ~ Cluster, data = item_data)
   anova_summary <- summary(anova_model)
-  
+
   # 結果を保存
   anova_results[[item]] <- anova_summary
-  
+
   # p値を取得
   p_value <- anova_summary[[1]][["Pr(>F)"]][1]
-  
+
   cat(paste("ANOVA p-value:", round(p_value, 4), "\n"))
   if (p_value < 0.05) {
     cat("→ Significant difference between clusters (p < 0.05)\n")
@@ -571,12 +580,12 @@ cat(paste("Z-score化されたデータを", zscore_path, "として保存しま
 
 cat("\n=== スクリプト実行完了 ===\n")
 cat("作成された図:\n")
-cat(paste("1. 素点箱ひげ図 (", boxplot_path, ")\n", sep=""))
-cat(paste("2. 素点バイオリンプロット (", violin_path, ")\n", sep=""))
-cat(paste("3. 全クラスター統合棒グラフ (", all_clusters_path, ")\n", sep=""))
+cat(paste("1. 素点箱ひげ図 (", boxplot_path, ")\n", sep = ""))
+cat(paste("2. 素点バイオリンプロット (", violin_path, ")\n", sep = ""))
+cat(paste("3. 全クラスター統合棒グラフ (", all_clusters_path, ")\n", sep = ""))
 cat("\n保存されたデータ:\n")
-cat(paste("1. 統計要約 (", summary_path, ")\n", sep=""))
-cat(paste("2. Z-score化データ (", zscore_path, ")\n", sep=""))
+cat(paste("1. 統計要約 (", summary_path, ")\n", sep = ""))
+cat(paste("2. Z-score化データ (", zscore_path, ")\n", sep = ""))
 cat("\n共変量調整とZ-score化により、標準化された比較が可能になりました。\n")
 cat("Z-score = 0が全体平均を表し、正の値は平均より高く、負の値は平均より低いことを示します。\n")
 cat("全てのクラスターと項目が一つのグラフに統合されています。\n")
