@@ -178,6 +178,8 @@ load_and_prep_data <- function(file_path, class_col, items, covariates) {
     # クラス列をファクター化
     if (class_col %in% names(data)) {
         data[[class_col]] <- as.factor(data[[class_col]])
+        # ラベルを "Profile X" に変更
+        levels(data[[class_col]]) <- paste0("Profile ", levels(data[[class_col]]))
     }
 
     return(data)
@@ -340,10 +342,10 @@ process_scale <- function(scale_name) {
         theme_minimal() +
         theme(
             legend.position = "none",
-            plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
-            axis.title = element_text(size = 14),
-            axis.text = element_text(size = 12),
-            strip.text = element_text(size = 12, face = "bold")
+            plot.title = element_text(size = 24, face = "bold", hjust = 0.5),
+            axis.title = element_text(size = 20),
+            axis.text = element_text(size = 16),
+            strip.text = element_text(size = 18, face = "bold")
         )
 
     # 4. 保存
