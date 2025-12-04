@@ -17,7 +17,7 @@ INPUT_FILE <- "raw_data/dummy_data.csv" # 分析したいCSVファイルのパ�
 
 # ★★★ 分析項目の設定 ★★★
 # 分析に使用する列名を直接指定
-TARGET_COLUMNS <- c("542690_00", "542700_00", "542710_00", "542720_00", "542730_00")
+TARGET_COLUMNS <- c("var1", "var2", "var3", "var4", "var5")
 
 # ★★★ クラスター数の設定 ★★★
 PROFILE_RANGE <- 1:3 # 比較するクラスター数の範囲
@@ -403,9 +403,22 @@ create_comparison_table <- function(lpa_models) {
                     mutate(across(all_of(round_two_cols), ~ round(.x, 2)))
             }
             round_three_cols <- setdiff(numeric_cols, c("Model", "Profiles", "Parameters", "N", round_two_cols))
+            # P値のカラムは別途フォーマットするため除外
+            p_val_cols <- c("BLRT p-value", "VLMR p-value")
+            round_three_cols <- setdiff(round_three_cols, p_val_cols)
+
             if (length(round_three_cols) > 0) {
                 final_comparison_table <- final_comparison_table %>%
                     mutate(across(all_of(round_three_cols), ~ round(.x, 3)))
+            }
+
+            # P値のカスタムフォーマット (0や1になるのを防ぐ)
+            # < 0.001 表記や、必要に応じて指数表記にする
+            for (col in intersect(p_val_cols, colnames(final_comparison_table))) {
+                # 数値として残っている場合のみ処理
+                if (is.numeric(final_comparison_table[[col]])) {
+                    final_comparison_table[[col]] <- format.pval(final_comparison_table[[col]], digits = 4, eps = 0.0001, scientific = FALSE)
+                }
             }
 
             # 推奨順に列を並べ替え（存在する場合のみ）
