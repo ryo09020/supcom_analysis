@@ -290,6 +290,17 @@ create_comparison_table <- function(lpa_models) {
                 null_model <- fit_indices[k - 1, ]
                 alt_model <- fit_indices[k, ]
 
+                # --- DIAGNOSTIC START ---
+                cat(paste0("\n🔍 VLMR Calculation Diagnostic (", k - 1, " vs ", k, " classes):\n"))
+                cat(paste0("   N = ", N, "\n"))
+                cat(paste0("   Null Model (", fit_indices$Classes[k - 1], " classes): LL = ", null_model$LogLik, ", Params = ", null_model$Parameters, "\n"))
+                cat(paste0("   Alt Model  (", fit_indices$Classes[k], " classes): LL = ", alt_model$LogLik, ", Params = ", alt_model$Parameters, "\n"))
+
+                if (is.na(null_model$LogLik) || is.na(alt_model$LogLik)) {
+                    cat("⚠️ Warning: One of the Log-Likelihoods is NA. Model might not have converged.\n")
+                }
+                # --- DIAGNOSTIC END ---
+
                 # tidyLPA::calc_lrt を実行してp値を計算
                 # calc_lrtは Lo-Mendell-Rubin 調整済み尤度比検定を行います
                 # 戻り値: c(lr, lmr_lr, df, lmr_p)
@@ -302,6 +313,8 @@ create_comparison_table <- function(lpa_models) {
                     alt_param = alt_model$Parameters,
                     alt_classes = alt_model$Classes
                 )
+
+                cat(paste0("   👉 Raw calc_lrt result: ", paste(lmr_result, collapse = ", "), "\n"))
 
                 # 結果（数値ベクトル）の4番目がp値 (lmr_p)
                 fit_indices$VLMR_p[k] <- lmr_result[4]
