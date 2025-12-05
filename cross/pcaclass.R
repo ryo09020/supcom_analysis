@@ -17,8 +17,8 @@ FEATURE_COLUMNS <- c(
   "X542720_00", "X542730_00"
 )
 CLASS_COLUMN <- "Class"
-CLASS_COUNT <- 3L              # 可視化するクラス数（1〜10）
-SCALING_METHOD <- "zscore"     # "minmax", "minmax_trimmed", "zscore"
+CLASS_COUNT <- 3L # 可視化するクラス数（1〜10）
+SCALING_METHOD <- "zscore" # "minmax", "minmax_trimmed", "zscore"
 
 OUTPUT_PREFIX <- "pcaclass"
 OUTPUT_WIDTH <- 10
@@ -164,7 +164,7 @@ run_pca <- function(scaled_data) {
   scores <- as.data.frame(pca$x[, 1:2, drop = FALSE])
   colnames(scores) <- c("PC1", "PC2")
   explained <- (pca$sdev^2) / sum(pca$sdev^2)
-  list(scores = scores, explained = explained)
+  list(scores = scores, explained = explained, rotation = pca$rotation)
 }
 
 create_pca_plot <- function(scores, class_values, explained) {
@@ -173,7 +173,7 @@ create_pca_plot <- function(scores, class_values, explained) {
   }
 
   available_classes <- sort(unique(class_values))
-  labels <- paste0("Class ", available_classes)
+  labels <- paste0("Profile ", available_classes)
 
   base_colors <- c(
     "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
@@ -199,9 +199,9 @@ create_pca_plot <- function(scores, class_values, explained) {
       y = y_label,
       color = "Class"
     ) +
-    ggplot2::theme_minimal(base_size = 12) +
+    ggplot2::theme_minimal(base_size = 16) +
     ggplot2::theme(
-      plot.title = ggplot2::element_text(hjust = 0.5, face = "bold", size = 14),
+      plot.title = ggplot2::element_text(hjust = 0.5, face = "bold", size = 24),
       panel.grid.major = ggplot2::element_line(color = "gray90"),
       panel.grid.minor = ggplot2::element_blank(),
       panel.border = ggplot2::element_rect(color = "gray70", fill = NA, linewidth = 1),
@@ -209,8 +209,79 @@ create_pca_plot <- function(scores, class_values, explained) {
     )
 }
 
-save_pca_plot <- function(plot) {
-  filename <- sprintf("%s_class%s.png", OUTPUT_PREFIX, CLASS_COUNT)
+create_biplot <- function(scores, loadings, class_values, explained) {
+  if (nrow(scores) != length(class_values)) {
+    stop("PCA スコアとクラス列の長さが一致しません。")
+  }
+
+  available_classes <- sort(unique(class_values))
+  labels <- paste0("Profile ", available_classes)
+
+  base_colors <- c(
+    "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+    "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"
+  )
+  class_palette <- base_colors[available_classes]
+
+  # スコアデータの準備
+  plot_data <- scores |>
+    dplyr::mutate(
+      class = factor(class_values, levels = available_classes, labels = labels)
+    )
+
+  # 負荷量データの準備 (PC1, PC2のみ)
+  loadings_df <- as.data.frame(loadings[, 1:2])
+  colnames(loadings_df) <- c("PC1", "PC2")
+  loadings_df$Feature <- rownames(loadings_df)
+
+  # スケーリング係数の計算 (矢印をスコアの範囲に合わせて調整)
+  # スコアの最大絶対値と負荷量の最大絶対値の比率を使用
+  score_max <- max(abs(plot_data$PC1), abs(plot_data$PC2))
+  loading_max <- max(abs(loadings_df$PC1), abs(loadings_df$PC2))
+  scale_factor <- (score_max / loading_max) * 0.8 # 0.8は余白調整用
+
+  loadings_df <- loadings_df |>
+    dplyr::mutate(
+      PC1 = PC1 * scale_factor,
+      PC2 = PC2 * scale_factor
+    )
+
+  pct <- round(100 * explained[1:2], 1)
+  x_label <- sprintf("PC1 (%.1f%%)", pct[1])
+  y_label <- sprintf("PC2 (%.1f%%)", pct[2])
+
+  ggplot2::ggplot() +
+    # スコアのプロット
+    ggplot2::geom_point(data = plot_data, ggplot2::aes(x = .data$PC1, y = .data$PC2, color = .data$class), alpha = 0.6, size = 2.6) +
+    # 負荷量の矢印
+    ggplot2::geom_segment(
+      data = loadings_df, ggplot2::aes(x = 0, y = 0, xend = .data$PC1, yend = .data$PC2),
+      arrow = ggplot2::arrow(length = ggplot2::unit(0.2, "cm")), color = "black", alpha = 0.8
+    ) +
+    # 負荷量のラベル
+    ggplot2::geom_text(
+      data = loadings_df, ggplot2::aes(x = .data$PC1, y = .data$PC2, label = .data$Feature),
+      color = "black", size = 5, vjust = -0.5, fontface = "bold"
+    ) +
+    ggplot2::scale_color_manual(values = class_palette) +
+    ggplot2::labs(
+      title = "PCA Biplot (Scores + Loadings)",
+      x = x_label,
+      y = y_label,
+      color = "Class"
+    ) +
+    ggplot2::theme_minimal(base_size = 16) +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(hjust = 0.5, face = "bold", size = 24),
+      panel.grid.major = ggplot2::element_line(color = "gray90"),
+      panel.grid.minor = ggplot2::element_blank(),
+      panel.border = ggplot2::element_rect(color = "gray70", fill = NA, linewidth = 1),
+      legend.position = "right"
+    )
+}
+
+save_pca_plot <- function(plot, suffix = "") {
+  filename <- sprintf("%s_class%s%s.png", OUTPUT_PREFIX, CLASS_COUNT, suffix)
   cat("プロット保存中:", filename, "\n")
   ggplot2::ggsave(filename, plot = plot, width = OUTPUT_WIDTH, height = OUTPUT_HEIGHT, dpi = OUTPUT_DPI)
 }
@@ -231,13 +302,19 @@ main <- function() {
   pca_plot <- create_pca_plot(pca_result$scores, prepared$classes, pca_result$explained)
   save_pca_plot(pca_plot)
 
+  biplot <- create_biplot(pca_result$scores, pca_result$rotation, prepared$classes, pca_result$explained)
+  save_pca_plot(biplot, suffix = "_biplot")
+
   cat("\n=== 処理完了 ===\n")
   cat(
     "設定: ", SCALING_METHOD, " スケーリング、クラス 1〜", CLASS_COUNT,
-    " を色分け", sep = ""
+    " を色分け",
+    sep = ""
   )
   cat("\n主成分寄与率: PC1=", round(100 * pca_result$explained[1], 1),
-      "%, PC2=", round(100 * pca_result$explained[2], 1), "%\n", sep = "")
+    "%, PC2=", round(100 * pca_result$explained[2], 1), "%\n",
+    sep = ""
+  )
 }
 
 # 実行
