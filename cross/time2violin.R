@@ -295,6 +295,7 @@ process_scale <- function(scale_name) {
             plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
             axis.title = element_text(size = 14),
             axis.text = element_text(size = 12),
+            axis.text.x = element_text(angle = 45, hjust = 1),
             strip.text = element_text(size = 12, face = "bold")
         )
 
