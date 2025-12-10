@@ -262,12 +262,27 @@ message("Generating MMSE violin plot (65+)...")
 # クラスラベルに "Profile " を追加
 levels(mmse_long$class_plot) <- paste0("Profile ", levels(mmse_long$class_plot))
 
+# mmse_summaryのクラスラベルも合わせる
+mmse_summary <- mmse_summary %>%
+  mutate(class = factor(paste0("Profile ", class), levels = levels(mmse_long$class_plot)))
+
 mmse_violin_plot <- ggplot(mmse_long, aes(x = class_plot, y = value, fill = time)) +
   geom_violin(position = position_dodge(width = 0.9), alpha = 0.5, trim = FALSE) +
+
+  # 平均値とSDを表示（点の追加）
+  geom_pointrange(
+    data = mmse_summary,
+    aes(x = class, y = mean, ymin = mean - sd, ymax = mean + sd, group = time),
+    position = position_dodge(width = 0.9),
+    color = "black",
+    size = 0.6,
+    shape = 18,
+    show.legend = FALSE
+  ) +
   facet_wrap(~item_name, scales = "free_y") +
   labs(
     title = "MMSE Longitudinal Comparison (65+)",
-    subtitle = paste0(time1_label, " vs ", time2_label),
+    subtitle = paste0(time1_label, " vs ", time2_label, " (Mean ± SD)"),
     x = "Psychological profile", # Changed from "Class"
     y = "MMSE Score",
     fill = "Timepoint"
@@ -281,7 +296,11 @@ mmse_violin_plot <- ggplot(mmse_long, aes(x = class_plot, y = value, fill = time
     axis.text = element_text(size = 16),
     axis.text.x = element_text(angle = 45, hjust = 1),
     strip.text = element_text(size = 18, face = "bold")
-  )
+  ) +
+  scale_y_continuous(breaks = function(x) {
+    vals <- pretty(x)
+    vals[vals %% 1 == 0]
+  })
 
 print(mmse_violin_plot)
 
@@ -305,7 +324,11 @@ mmse_box_plot <- ggplot(mmse_long, aes(x = class_plot, y = value, fill = time)) 
     legend.position = "bottom",
     plot.title = element_text(size = 18, face = "bold"),
     plot.subtitle = element_text(size = 14)
-  )
+  ) +
+  scale_y_continuous(breaks = function(x) {
+    vals <- pretty(x)
+    vals[vals %% 1 == 0]
+  })
 
 print(mmse_box_plot)
 

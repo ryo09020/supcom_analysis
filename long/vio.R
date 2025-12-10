@@ -235,8 +235,28 @@ summary_stats <- df_long %>%
 # クラスラベルに "Profile " を追加
 levels(df_long$class) <- paste0("Profile ", levels(df_long$class))
 
+# summary_statsのクラスラベルも合わせる
+# (df_long$classはfactorなので、levelsを変更したが、summary_stats$classもfactor化して合わせる)
+# summary_stats$class <- factor(summary_stats$class, levels = levels(df_long$class)) # 元がcharacter/numericの場合注意だが、df_long作成時にfactor化されている
+# levels(summary_stats$class) <- levels(df_long$class) # これだと順序依存で危険かも。
+# 安全策: df_longと同じ変換を行う
+summary_stats <- summary_stats %>%
+  mutate(class = factor(paste0("Profile ", class), levels = levels(df_long$class)))
+
+
 violin_plot <- ggplot(df_long, aes(x = class, y = value, fill = time)) +
   geom_violin(position = position_dodge(width = 0.9), alpha = 0.5, trim = FALSE) +
+
+  # 平均値とSDを表示（点の追加）
+  geom_pointrange(
+    data = summary_stats,
+    aes(y = mean, ymin = mean - sd, ymax = mean + sd, group = time),
+    position = position_dodge(width = 0.9),
+    color = "black",
+    size = 0.6,
+    shape = 18,
+    show.legend = FALSE
+  ) +
 
   # ------------------------------------------------------------------
   # ★★★ `facet_wrap` の `labeller` を使用（より堅牢な方法）★★★
@@ -255,7 +275,7 @@ violin_plot <- ggplot(df_long, aes(x = class, y = value, fill = time)) +
   # ラベルとタイトルを英語に設定
   labs(
     title = "Longitudinal Comparison by Class and Item",
-    subtitle = "Time 1 vs Time 2",
+    subtitle = "Time 1 vs Time 2 (Mean ± SD)",
     x = "Psychological profile", # Changed from "Class" to match simple_vioplot.R
     y = "Score", # Changed from "Value"
     fill = "Timepoint"
@@ -269,7 +289,11 @@ violin_plot <- ggplot(df_long, aes(x = class, y = value, fill = time)) +
     axis.text = element_text(size = 16),
     axis.text.x = element_text(angle = 45, hjust = 1),
     strip.text = element_text(size = 18, face = "bold")
-  )
+  ) +
+  scale_y_continuous(breaks = function(x) {
+    vals <- pretty(x)
+    vals[vals %% 1 == 0]
+  })
 
 # 7. プロットの表示
 print(violin_plot)
@@ -291,7 +315,11 @@ box_plot <- ggplot(df_long, aes(x = class, y = value, fill = time)) +
     legend.position = "bottom",
     plot.title = element_text(size = 18, face = "bold"),
     plot.subtitle = element_text(size = 14)
-  )
+  ) +
+  scale_y_continuous(breaks = function(x) {
+    vals <- pretty(x)
+    vals[vals %% 1 == 0]
+  })
 
 print(box_plot)
 
