@@ -304,12 +304,7 @@ process_scale <- function(scale_name) {
             color = "black", size = 0.8, shape = 18
         ) +
 
-        # N数を表示
-        geom_text(
-            data = summary_df,
-            aes(y = ymin, label = paste0("n=", n)),
-            vjust = 1.5, size = 3, color = "black"
-        ) +
+
 
         # ファセット（項目ごとに分割）
         facet_wrap(~item_label, scales = "free_y") +
