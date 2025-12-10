@@ -259,22 +259,28 @@ mmse_summary <- mmse_long |>
 
 message("Generating MMSE violin plot (65+)...")
 
+# クラスラベルに "Profile " を追加
+levels(mmse_long$class_plot) <- paste0("Profile ", levels(mmse_long$class_plot))
+
 mmse_violin_plot <- ggplot(mmse_long, aes(x = class_plot, y = value, fill = time)) +
-  geom_violin(position = position_dodge(width = 0.9), alpha = 0.7, trim = FALSE) +
-  facet_wrap(~ item_name, scales = "free_y") +
+  geom_violin(position = position_dodge(width = 0.9), alpha = 0.5, trim = FALSE) +
+  facet_wrap(~item_name, scales = "free_y") +
   labs(
     title = "MMSE Longitudinal Comparison (65+)",
     subtitle = paste0(time1_label, " vs ", time2_label),
-    x = "Class",
+    x = "Psychological profile", # Changed from "Class"
     y = "MMSE Score",
     fill = "Timepoint"
   ) +
   theme_minimal() +
   theme(
-    strip.text = element_text(size = 12, face = "bold"),
     legend.position = "bottom",
-    plot.title = element_text(size = 18, face = "bold"),
-    plot.subtitle = element_text(size = 14)
+    plot.title = element_text(size = 24, face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(size = 18, hjust = 0.5),
+    axis.title = element_text(size = 20),
+    axis.text = element_text(size = 16),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    strip.text = element_text(size = 18, face = "bold")
   )
 
 print(mmse_violin_plot)
@@ -285,7 +291,7 @@ print(mmse_violin_plot)
 
 mmse_box_plot <- ggplot(mmse_long, aes(x = class_plot, y = value, fill = time)) +
   geom_boxplot(position = position_dodge(width = 0.9), outlier.size = 0.6) +
-  facet_wrap(~ item_name, scales = "free_y") +
+  facet_wrap(~item_name, scales = "free_y") +
   labs(
     title = "MMSE Longitudinal Boxplot (65+)",
     subtitle = paste0(time1_label, " vs ", time2_label),

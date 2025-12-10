@@ -17,10 +17,10 @@ file_time1 <- "time1.csv"
 file_time2 <- "time2_with_class.csv" # 前回スクリプトで作成したファイル
 
 # 2-2. 読み込む列名の指定
-class_column <- "class" 
+class_column <- "class"
 
 # 2-2-1. 出力先ディレクトリとファイル名
-output_dir <- "longitudinal_outputs"         # すべての結果を格納するディレクトリ
+output_dir <- "longitudinal_outputs" # すべての結果を格納するディレクトリ
 output_violin_file <- "longitudinal_violin_plot_custom_labels_colored.png"
 output_boxplot_file <- "longitudinal_boxplot_custom_labels_colored.png"
 output_stats_file <- "longitudinal_summary_stats.csv"
@@ -232,38 +232,43 @@ summary_stats <- df_long %>%
   dplyr::arrange(item_key, time, class)
 
 # 6. プロットの作成
+# クラスラベルに "Profile " を追加
+levels(df_long$class) <- paste0("Profile ", levels(df_long$class))
+
 violin_plot <- ggplot(df_long, aes(x = class, y = value, fill = time)) +
-  geom_violin(position = position_dodge(width = 0.9), alpha = 0.7, trim = FALSE) +
-  
+  geom_violin(position = position_dodge(width = 0.9), alpha = 0.5, trim = FALSE) +
+
   # ------------------------------------------------------------------
   # ★★★ `facet_wrap` の `labeller` を使用（より堅牢な方法）★★★
-  # 
+  #
   # (上記 5. の factor() でのラベル設定がうまくいかない場合や、
   #  よりggplot2の標準的な方法を使いたい場合は、こちらのコメントアウトを
   #  解除して、上記 5. の factor() の 'labels' 部分を削除してください)
-  # 
+  #
   # item_labeller <- as_labeller(item_labels_map)
   # facet_wrap(~ item_name, scales = "free_y", labeller = item_labeller) +
   # ------------------------------------------------------------------
 
   # 上記 5. の factor() でラベルを設定した場合、facet_wrap はシンプルでOK
-  facet_wrap(~ item_name, scales = "free_y") +
+  facet_wrap(~item_name, scales = "free_y") +
 
   # ラベルとタイトルを英語に設定
   labs(
     title = "Longitudinal Comparison by Class and Item",
     subtitle = "Time 1 vs Time 2",
-    x = "Class",
-    y = "Value",
+    x = "Psychological profile", # Changed from "Class" to match simple_vioplot.R
+    y = "Score", # Changed from "Value"
     fill = "Timepoint"
   ) +
-  
   theme_minimal() +
   theme(
-    strip.text = element_text(size = 12, face = "bold"),
     legend.position = "bottom",
-    plot.title = element_text(size = 18, face = "bold"),
-    plot.subtitle = element_text(size = 14)
+    plot.title = element_text(size = 24, face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(size = 18, hjust = 0.5),
+    axis.title = element_text(size = 20),
+    axis.text = element_text(size = 16),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    strip.text = element_text(size = 18, face = "bold")
   )
 
 # 7. プロットの表示
@@ -272,7 +277,7 @@ print(violin_plot)
 # 8. 箱ひげ図の作成
 box_plot <- ggplot(df_long, aes(x = class, y = value, fill = time)) +
   geom_boxplot(position = position_dodge(width = 0.9), outlier.size = 0.6) +
-  facet_wrap(~ item_name, scales = "free_y") +
+  facet_wrap(~item_name, scales = "free_y") +
   labs(
     title = "Longitudinal Boxplot by Class and Item",
     subtitle = "Time 1 vs Time 2",
