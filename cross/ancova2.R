@@ -158,12 +158,36 @@ analyze_ancova_by_class <- function(file_path, columns_to_test, class_column, co
 
     # Loop through each item
     for (col in columns_to_test) {
-        # --- 1. Descriptive Statistics (Raw Means) ---
-        desc_stats <- df %>%
+        # --- 1. Data Cleaning & Preprocessing for this Item ---
+        # Explicitly convert to numeric and handle Inf/NaN
+        # We create a temporary dataframe for analysis to avoid modifying the original 'df' in a way that affects other iterations (though here it's per column)
+        analysis_df <- df
+
+        # Convert target column to numeric, coercing non-numeric to NA
+        # Suppress warnings about NAs introduced by coercion
+        suppressWarnings({
+            analysis_df[[col]] <- as.numeric(analysis_df[[col]])
+        })
+
+        # Replace Inf and -Inf with NA
+        is_infinite <- is.infinite(analysis_df[[col]])
+        if (any(is_infinite)) {
+            analysis_df[[col]][is_infinite] <- NA
+        }
+
+        # Check if we have enough data left
+        valid_n <- sum(!is.na(analysis_df[[col]]))
+        if (valid_n < 3) {
+            cat(paste("Skipping item", col, "- insufficient valid data (N < 3)\n"))
+            next
+        }
+
+        # --- 2. Descriptive Statistics (Raw Means) ---
+        desc_stats <- analysis_df %>%
             group_by(across(all_of(class_column))) %>%
             summarise(
-                Mean = mean(as.numeric(.data[[col]]), na.rm = TRUE),
-                SD = sd(as.numeric(.data[[col]]), na.rm = TRUE),
+                Mean = mean(.data[[col]], na.rm = TRUE),
+                SD = sd(.data[[col]], na.rm = TRUE),
                 N = sum(!is.na(.data[[col]])),
                 .groups = "drop"
             ) %>%
@@ -173,11 +197,13 @@ analyze_ancova_by_class <- function(file_path, columns_to_test, class_column, co
                 names_sep = "_"
             )
 
-        # --- 2. ANCOVA Model ---
+        # --- 3. ANCOVA Model ---
         # Formula: Item ~ Class + age + sex + edu_num
         # We use backticks for the item name in case it starts with a number
         formula_str <- paste0("`", col, "` ~ ", class_column, " + ", paste(covariates, collapse = " + "))
-        model <- lm(as.formula(formula_str), data = df)
+
+        # Use the cleaned analysis_df
+        model <- lm(as.formula(formula_str), data = analysis_df)
 
         # Type III ANOVA for F-test
         # We use Type III because we have unbalanced designs usually and covariates
