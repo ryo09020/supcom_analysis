@@ -286,7 +286,7 @@ process_scale <- function(scale_name) {
         scale_fill_brewer(palette = "Set2") +
         labs(
             title = paste(scale_name, "Scores by Class"),
-            x = "Class",
+            x = "Psychological profile",
             y = "Score"
         ) +
         theme_minimal() +

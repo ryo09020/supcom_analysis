@@ -124,6 +124,34 @@ SCALE_CONFIG <- list(
         items = list(
             "543160_00" = "Total"
         )
+    ),
+    "MMSE" = list(
+        name = "MMSE",
+        items = list(
+            "516484_00" = "Total"
+        )
+    ),
+    "Verval Fluency" = list(
+        name = "Verval Fluency",
+        items = list(
+            "520000_00" = "Letter fluency task",
+            "520010_00" = "Category fluency task"
+        )
+    ),
+    "Digit Symbol Test" = list(
+        name = "Digit Symbol Test",
+        items = list(
+            "520040_00" = "Total"
+        )
+    ),
+    "JART" = list(
+        name = "JART",
+        items = list(
+            "520120_00" = "Error Count",
+            "520130_00" = "FSIQ",
+            "520140_00" = "VIQ",
+            "520150_00" = "PIQ"
+        )
     )
 )
 
