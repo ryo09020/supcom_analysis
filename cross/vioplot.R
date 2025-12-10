@@ -324,6 +324,21 @@ process_scale <- function(scale_name) {
                     means <- calc_adjusted_means(item_data, code, CLASS_COLUMN, COVARIATES)
                     means$item <- code
                     means$item_label <- target_items[[code]]
+
+                    # N数を計算
+                    n_counts <- item_data %>%
+                        group_by(across(all_of(CLASS_COLUMN))) %>%
+                        tally() %>%
+                        rename(class_factor = all_of(CLASS_COLUMN), n = n)
+
+                    # meansにN数を結合
+                    means <- means %>%
+                        left_join(n_counts, by = "class_factor")
+
+                    # コンソールに出力
+                    cat(sprintf("  Item: %s (%s)\n", code, target_items[[code]]))
+                    print(n_counts)
+
                     adj_means_list[[length(adj_means_list) + 1]] <- means
                 },
                 error = function(e) {
@@ -355,6 +370,13 @@ process_scale <- function(scale_name) {
             data = adj_means_df,
             aes(y = y, ymin = ymin, ymax = ymax),
             color = "black", size = 0.8, shape = 18
+        ) +
+
+        # N数を表示
+        geom_text(
+            data = adj_means_df,
+            aes(y = ymin, label = paste0("n=", n)),
+            vjust = 1.5, size = 3, color = "black"
         ) +
 
         # ファセット（項目ごとに分割）
