@@ -72,22 +72,23 @@ violin_plot <- ggplot(plot_data, aes(x = Cluster, y = Value, fill = Cluster)) +
     stat_summary(fun = mean, geom = "point", shape = 23, size = 2.5, fill = "red", color = "black") +
     facet_wrap(~Item_Label, scales = "free_y") +
     scale_fill_viridis_d(name = "Cluster") +
-    labs(title = plot_title, x = "Cluster (Profile)", y = "Value") +
+    labs(title = plot_title, x = "Psychological profile", y = "Value") +
     theme_minimal() +
     theme(
-        plot.title = element_text(size = 20, hjust = 0.5, face = "bold"),
-        axis.title = element_text(size = 16),
-        axis.text = element_text(size = 12),
-        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),  # rotate like cross/vioplot.R
-        strip.text = element_text(size = 14, face = "bold"),
-        legend.position = "bottom",
-        legend.title = element_text(size = 14),
-        legend.text = element_text(size = 12)
+        plot.title = element_text(size = 24, hjust = 0.5, face = "bold"),
+        axis.title = element_text(size = 20),
+        axis.text = element_text(size = 16),
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),  # align with cluster_zscore_barplot.R
+        strip.text = element_text(size = 18, face = "bold"),
+        legend.position = "none"
     )
 
 print(violin_plot)
 
 if (!is.null(output_file)) {
-    ggsave(output_file, violin_plot, width = 10, height = 7, dpi = 300)
-    message(sprintf("Saved: %s", output_file))
+    n_clusters <- length(unique(plot_data$Cluster))
+    width_size <- max(12, n_clusters * 3)
+    height_size <- max(8, ceiling(length(target_items) / 2) * 4)
+    ggsave(output_file, violin_plot, width = width_size, height = height_size, dpi = 300, bg = "white")
+    message(sprintf("Saved: %s (width=%.1f, height=%.1f)", output_file, width_size, height_size))
 }
