@@ -355,16 +355,10 @@ process_scale <- function(scale_name) {
 
     p <- ggplot(long_df, aes(x = class_factor, y = value, fill = class_factor)) +
         geom_violin(trim = FALSE, alpha = 0.5, color = NA) +
-        geom_boxplot(width = 0.1, fill = "white", alpha = 0.5, outlier.shape = NA) +
         geom_pointrange(
             data = adj_means_df,
             aes(y = y, ymin = ymin, ymax = ymax),
-            color = "red", size = 0.8, shape = 18
-        ) +
-        geom_text(
-            data = adj_means_df,
-            aes(y = ymin, label = paste0("n=", n)),
-            vjust = 1.5, size = 3, color = "black"
+            color = "black", size = 0.8, shape = 18
         ) +
         facet_wrap(~item_label, scales = "free_y") +
         scale_fill_brewer(palette = "Set2") +
