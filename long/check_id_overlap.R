@@ -10,6 +10,11 @@ file1 <- "time1.csv"
 file2 <- "time2_with_class.csv"
 id_column <- "ID"
 
+# Output settings
+output_dir <- "."  # same folder as inputs by default
+output_prefix_1 <- "time1_common"
+output_prefix_2 <- "time2_common"
+
 # Check files
 if (!file.exists(file1)) stop(paste("File not found:", file1))
 if (!file.exists(file2)) stop(paste("File not found:", file2))
@@ -25,15 +30,19 @@ df2 <- read_csv(file2, show_col_types = FALSE)
 if (!id_column %in% names(df1)) stop(paste("ID column not found in", file1))
 if (!id_column %in% names(df2)) stop(paste("ID column not found in", file2))
 
+normalize_id <- function(x) {
+    x |>
+        as.character() |>
+        trimws()
+}
+
 # Extract IDs (handle potential whitespace)
 ids1 <- df1[[id_column]] |>
-    as.character() |>
-    trimws() |>
+    normalize_id() |>
     na.omit() |>
     unique()
 ids2 <- df2[[id_column]] |>
-    as.character() |>
-    trimws() |>
+    normalize_id() |>
     na.omit() |>
     unique()
 
@@ -41,6 +50,24 @@ ids2 <- df2[[id_column]] |>
 common_ids <- intersect(ids1, ids2)
 only_in_1 <- setdiff(ids1, ids2)
 only_in_2 <- setdiff(ids2, ids1)
+
+# Filter rows to common IDs (keep all matching records)
+df1_clean <- df1 |>
+    mutate(.ID_norm = normalize_id(.data[[id_column]])) |>
+    filter(!is.na(.ID_norm), .ID_norm %in% common_ids) |>
+    select(-.ID_norm)
+
+df2_clean <- df2 |>
+    mutate(.ID_norm = normalize_id(.data[[id_column]])) |>
+    filter(!is.na(.ID_norm), .ID_norm %in% common_ids) |>
+    select(-.ID_norm)
+
+# Write outputs (record count included in filename)
+out1 <- file.path(output_dir, sprintf("%s_n%d.csv", output_prefix_1, nrow(df1_clean)))
+out2 <- file.path(output_dir, sprintf("%s_n%d.csv", output_prefix_2, nrow(df2_clean)))
+
+write_csv(df1_clean, out1)
+write_csv(df2_clean, out2)
 
 # Output Results
 cat("\n========================================\n")
@@ -55,6 +82,12 @@ cat("----------------------------------------\n")
 cat(sprintf("Common IDs (Both)   : %d\n", length(common_ids)))
 cat(sprintf("Unique to File 1    : %d\n", length(only_in_1)))
 cat(sprintf("Unique to File 2    : %d\n", length(only_in_2)))
+cat("----------------------------------------\n")
+cat(sprintf("Rows kept in File 1 : %d\n", nrow(df1_clean)))
+cat(sprintf("Rows kept in File 2 : %d\n", nrow(df2_clean)))
+cat("----------------------------------------\n")
+cat(sprintf("Wrote File 1 clean  : %s\n", out1))
+cat(sprintf("Wrote File 2 clean  : %s\n", out2))
 cat("========================================\n")
 
 # Optional: Save unique IDs to file if needed
