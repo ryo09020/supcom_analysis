@@ -18,6 +18,7 @@ file_time2 <- "time2_with_class.csv" # 前回スクリプトで作成したフ�
 
 # 2-2. 読み込む列名の指定
 class_column <- "class"
+missing_flag_column <- "missing_flag" # Set to NULL or "" to disable
 
 # 2-2-1. 出力先ディレクトリとファイル名
 output_dir <- "longitudinal_outputs" # すべての結果を格納するディレクトリ
@@ -140,9 +141,20 @@ rename_columns_with_map <- function(df, selected_map) {
   renamed_df
 }
 
-prepare_timepoint_data <- function(file_path, time_label, item_map, target_items, class_column) {
+prepare_timepoint_data <- function(file_path, time_label, item_map, target_items, class_column, missing_flag_col = NULL) {
   cat(sprintf("📥 %s (%s) を読み込み中...\n", time_label, file_path))
   df_raw <- readr::read_csv(file_path, show_col_types = FALSE)
+
+  # Filter by missing flag if specified
+  if (!is.null(missing_flag_col) && missing_flag_col != "" && missing_flag_col %in% names(df_raw)) {
+    n_before <- nrow(df_raw)
+    df_raw <- df_raw |> dplyr::filter(.data[[missing_flag_col]] != 1 & .data[[missing_flag_col]] != "1")
+    n_after <- nrow(df_raw)
+    cat(sprintf("   -> Filtered by %s: %d -> %d records (removed %d)\n", missing_flag_col, n_before, n_after, n_before - n_after))
+  } else if (!is.null(missing_flag_col) && missing_flag_col != "" && !missing_flag_col %in% names(df_raw)) {
+    warning(sprintf("%s: Missing flag column '%s' not found in data. No filtering applied.", time_label, missing_flag_col))
+  }
+
   selected_map <- validate_item_map(item_map, target_items, time_label)
   required_columns <- unique(c(class_column, selected_map))
   missing_columns <- setdiff(required_columns, names(df_raw))
@@ -193,8 +205,8 @@ time_levels <- c(time1_label, time2_label)
 
 
 # 3. データの読み込みと前処理 (T1, T2)
-df_t1 <- prepare_timepoint_data(file_time1, time1_label, time1_item_map, target_items, class_column)
-df_t2 <- prepare_timepoint_data(file_time2, time2_label, time2_item_map, target_items, class_column)
+df_t1 <- prepare_timepoint_data(file_time1, time1_label, time1_item_map, target_items, class_column, missing_flag_column)
+df_t2 <- prepare_timepoint_data(file_time2, time2_label, time2_item_map, target_items, class_column, missing_flag_column)
 
 # 4. T1とT2のデータを縦に結合
 df_combined <- dplyr::bind_rows(df_t1, df_t2)
@@ -247,13 +259,13 @@ summary_stats <- summary_stats %>%
 violin_plot <- ggplot(df_long, aes(x = class, y = value, fill = time)) +
   geom_violin(position = position_dodge(width = 0.9), alpha = 0.5, trim = FALSE) +
 
-  # 平均値とSDを表示（点の追加）
-  geom_pointrange(
+  # 平均値のみ点で表示（CIは非表示）
+  geom_point(
     data = summary_stats,
-    aes(y = mean, ymin = mean - sd, ymax = mean + sd, group = time),
+    aes(y = mean, group = time),
     position = position_dodge(width = 0.9),
     color = "black",
-    size = 0.6,
+    size = 2.5,
     shape = 18,
     show.legend = FALSE
   ) +
@@ -270,7 +282,7 @@ violin_plot <- ggplot(df_long, aes(x = class, y = value, fill = time)) +
   # ------------------------------------------------------------------
 
   # 上記 5. の factor() でラベルを設定した場合、facet_wrap はシンプルでOK
-  facet_wrap(~item_name, scales = "free_y") +
+  facet_wrap(~item_name, scales = "free_y", ncol = 2) +
 
   # ラベルとタイトルを英語に設定
   labs(
@@ -336,8 +348,8 @@ stats_path <- file.path(output_dir, output_stats_file)
 ggsave(
   filename = violin_path,
   plot = violin_plot,
-  width = 12,
-  height = 7,
+  width = max(12, length(levels(df_long$class)) * 3),
+  height = max(8, ceiling(length(target_items) / 2) * 4),
   dpi = 300,
   bg = "white"
 )
@@ -346,8 +358,8 @@ cat(sprintf("🖼️ バイオリンプロットを '%s' に保存しました�
 ggsave(
   filename = boxplot_path,
   plot = box_plot,
-  width = 12,
-  height = 7,
+  width = max(12, length(levels(df_long$class)) * 3),
+  height = max(8, ceiling(length(target_items) / 2) * 4),
   dpi = 300,
   bg = "white"
 )

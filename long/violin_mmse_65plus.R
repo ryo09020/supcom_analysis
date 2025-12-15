@@ -17,6 +17,7 @@ id_column <- "ID"
 class_column <- "class"
 age_column <- "age"
 age_threshold <- 65
+missing_flag_column <- "missing_flag" # Set to NULL or "" to disable
 
 mmse_items <- c("mmse_total")
 
@@ -107,11 +108,21 @@ rename_columns_with_map <- function(df, selected_map) {
   renamed_df
 }
 
-prepare_timepoint_data <- function(file_path, time_label, item_map, target_items, id_column, class_column, age_column) {
+prepare_timepoint_data <- function(file_path, time_label, item_map, target_items, id_column, class_column, age_column, missing_flag_col = NULL) {
   message(sprintf("Reading %s (%s)...", time_label, file_path))
   df_raw <- readr::read_csv(file_path, show_col_types = FALSE)
 
   check_required_columns(df_raw, c(id_column, class_column, age_column), time_label)
+
+  # Filter by missing flag if specified
+  if (!is.null(missing_flag_col) && missing_flag_col != "" && missing_flag_col %in% names(df_raw)) {
+    n_before <- nrow(df_raw)
+    df_raw <- df_raw |> dplyr::filter(.data[[missing_flag_col]] != 1 & .data[[missing_flag_col]] != "1")
+    n_after <- nrow(df_raw)
+    message(sprintf("   -> Filtered by %s: %d -> %d records (removed %d)", missing_flag_col, n_before, n_after, n_before - n_after))
+  } else if (!is.null(missing_flag_col) && missing_flag_col != "" && !missing_flag_col %in% names(df_raw)) {
+    warning(sprintf("%s: Missing flag column '%s' not found in data. No filtering applied.", time_label, missing_flag_col))
+  }
 
   df_norm <- df_raw |>
     dplyr::mutate(
@@ -188,7 +199,8 @@ df_t1 <- prepare_timepoint_data(
   target_items = mmse_items,
   id_column = id_column,
   class_column = class_column,
-  age_column = age_column
+  age_column = age_column,
+  missing_flag_col = missing_flag_column
 )
 
 df_t2 <- prepare_timepoint_data(
@@ -198,7 +210,8 @@ df_t2 <- prepare_timepoint_data(
   target_items = mmse_items,
   id_column = id_column,
   class_column = class_column,
-  age_column = age_column
+  age_column = age_column,
+  missing_flag_col = missing_flag_column
 )
 
 # Retain overlapping IDs post age-filtering
@@ -269,17 +282,17 @@ mmse_summary <- mmse_summary %>%
 mmse_violin_plot <- ggplot(mmse_long, aes(x = class_plot, y = value, fill = time)) +
   geom_violin(position = position_dodge(width = 0.9), alpha = 0.5, trim = FALSE) +
 
-  # 平均値とSDを表示（点の追加）
-  geom_pointrange(
+  # 平均値のみ点で表示（CIは非表示）
+  geom_point(
     data = mmse_summary,
-    aes(x = class, y = mean, ymin = mean - sd, ymax = mean + sd, group = time),
+    aes(x = class, y = mean, group = time),
     position = position_dodge(width = 0.9),
     color = "black",
-    size = 0.6,
+    size = 2.5,
     shape = 18,
     show.legend = FALSE
   ) +
-  facet_wrap(~item_name, scales = "free_y") +
+  facet_wrap(~item_name, scales = "free_y", ncol = 2) +
   labs(
     title = "MMSE Longitudinal Comparison (65+)",
     subtitle = paste0(time1_label, " vs ", time2_label, " (Mean ± SD)"),
@@ -351,8 +364,8 @@ stats_path <- file.path(output_dir, output_stats_file)
 ggsave(
   filename = violin_path,
   plot = mmse_violin_plot,
-  width = 10,
-  height = 6,
+  width = max(12, length(levels(mmse_long$class_plot)) * 3),
+  height = max(8, ceiling(length(mmse_items) / 2) * 4),
   dpi = 300,
   bg = "white"
 )
@@ -362,8 +375,8 @@ message(sprintf("Saved violin plot to '%s'.", normalizePath(violin_path)))
 ggsave(
   filename = boxplot_path,
   plot = mmse_box_plot,
-  width = 10,
-  height = 6,
+  width = max(12, length(levels(mmse_long$class_plot)) * 3),
+  height = max(8, ceiling(length(mmse_items) / 2) * 4),
   dpi = 300,
   bg = "white"
 )
