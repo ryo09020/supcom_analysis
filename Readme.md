@@ -1,4 +1,4 @@
-# supcom_analysis（修論用 手順メモ）
+# supcom_analysis
 
 このリポジトリは、横断解析（クラスター/LPA）と縦断解析（Time1/Time2）で使用した R スクリプト群をまとめたものです。
 
