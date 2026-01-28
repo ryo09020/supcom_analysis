@@ -59,11 +59,18 @@ validate_settings <- function() {
 }
 
 load_data <- function() {
-  if (!file.exists(INPUT_FILE)) {
-    stop("指定されたファイルが見つかりません: ", INPUT_FILE)
+  input_path <- INPUT_FILE
+  if (!file.exists(input_path)) {
+    fallback <- file.path("outputs", basename(input_path))
+    if (file.exists(fallback)) {
+      cat("指定されたファイルが見つからないため代替パスを使用します:", fallback, "\n")
+      input_path <- fallback
+    } else {
+      stop("指定されたファイルが見つかりません: ", INPUT_FILE)
+    }
   }
-  cat("データ読み込み中:", basename(INPUT_FILE), "\n")
-  data <- readr::read_csv(INPUT_FILE, show_col_types = FALSE)
+  cat("データ読み込み中:", basename(input_path), "\n")
+  data <- readr::read_csv(input_path, show_col_types = FALSE)
   cat("データサイズ:", nrow(data), "行", ncol(data), "列\n")
   data
 }
@@ -165,6 +172,46 @@ run_pca <- function(scaled_data) {
   colnames(scores) <- c("PC1", "PC2")
   explained <- (pca$sdev^2) / sum(pca$sdev^2)
   list(scores = scores, explained = explained, rotation = pca$rotation)
+}
+
+compute_feature_contributions <- function(rotation, pcs = 1:2) {
+  if (!is.matrix(rotation)) {
+    rotation <- as.matrix(rotation)
+  }
+  if (is.null(rownames(rotation))) {
+    stop("rotation の行名(特徴量名)がありません。")
+  }
+  if (length(pcs) == 0) {
+    stop("pcs は1つ以上指定してください。")
+  }
+  pcs <- as.integer(pcs)
+  pcs <- pcs[!is.na(pcs) & pcs >= 1 & pcs <= ncol(rotation)]
+  if (length(pcs) == 0) {
+    stop("指定された pcs が rotation の列範囲外です。")
+  }
+
+  rotation_pc <- rotation[, pcs, drop = FALSE]
+  res <- data.frame(Feature = rownames(rotation_pc), stringsAsFactors = FALSE)
+
+  for (pc_name in colnames(rotation_pc)) {
+    loading <- rotation_pc[, pc_name]
+    denom <- sum(loading^2, na.rm = TRUE)
+    if (is.na(denom) || denom == 0) {
+      contrib <- rep(NA_real_, length(loading))
+    } else {
+      contrib <- (loading^2) / denom * 100
+    }
+    res[[paste0("Loading_", pc_name)]] <- loading
+    res[[paste0("ContributionPct_", pc_name)]] <- contrib
+  }
+
+  res
+}
+
+save_feature_contributions <- function(contrib_df) {
+  filename <- sprintf("%s_class%s_feature_contributions.csv", OUTPUT_PREFIX, CLASS_COUNT)
+  cat("特徴量の寄与率を保存中:", filename, "\n")
+  readr::write_csv(contrib_df, filename)
 }
 
 create_pca_plot <- function(scores, class_values, explained) {
@@ -297,6 +344,16 @@ main <- function() {
   data <- load_data()
   prepared <- prepare_data(data)
   pca_result <- run_pca(prepared$scaled)
+
+  cat("\n--- 特徴量の寄与率(%) ---\n")
+  contrib_df <- compute_feature_contributions(pca_result$rotation, pcs = 1:2)
+  contrib_pc1 <- contrib_df[order(-contrib_df$ContributionPct_PC1), c("Feature", "Loading_PC1", "ContributionPct_PC1"), drop = FALSE]
+  contrib_pc2 <- contrib_df[order(-contrib_df$ContributionPct_PC2), c("Feature", "Loading_PC2", "ContributionPct_PC2"), drop = FALSE]
+  cat("PC1 寄与(降順)\n")
+  print(contrib_pc1, row.names = FALSE)
+  cat("\nPC2 寄与(降順)\n")
+  print(contrib_pc2, row.names = FALSE)
+  save_feature_contributions(contrib_df)
 
   cat("\n--- 可視化・保存 ---\n")
   pca_plot <- create_pca_plot(pca_result$scores, prepared$classes, pca_result$explained)
